@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Jupyter
+.ipynb_checkpoints
+
+# Data
+data/
+*.csv
+kaggle.json
+
+# Build
+dist/
+build/
+*.egg-info/
