@@ -23,7 +23,31 @@ An interactive web application built with [Solara](https://solara.dev/) and [Plo
    ```bash
    pip install -r requirements.txt
    ```
-4. Run the dashboard:
-   ```bash
-   solara run app.py
-   ```
+
+## Usage
+
+### 1. Preprocess Data
+If you have new data or want to re-run the clustering:
+```bash
+python preprocess.py
+```
+
+### 2. Validate Model
+Run the validation script to check the silhouette score and cluster distribution:
+```bash
+python validate_model.py
+```
+
+### 3. Run Tests
+Run the unit tests:
+```bash
+pytest
+```
+
+### 4. Run the Dashboard
+```bash
+solara run app.py
+```
+
+## Data Source
+The project uses NBA player stats (per game) including traditional metrics (PTS, TRB, AST, STL, BLK) and shooting efficiencies.

@@ -6,3 +6,4 @@ solara
 kaggle
 matplotlib
 ipywidgets
+pytest
