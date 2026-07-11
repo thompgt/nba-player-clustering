@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 def validate():
     if not os.path.exists(config.OUTPUT_FILE):
-        logger.error("%s not found.", config.OUTPUT_FILE)
+        logger.error("%s not found. Run `python preprocess.py` first to generate it.", config.OUTPUT_FILE)
         return
 
     df = pd.read_csv(config.OUTPUT_FILE)

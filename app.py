@@ -1,3 +1,5 @@
+import logging
+
 import solara
 import pandas as pd
 import plotly.express as px
@@ -6,8 +8,17 @@ import numpy as np
 
 import config
 
+logger = logging.getLogger(__name__)
+
 # Load data
-df = pd.read_csv(config.OUTPUT_FILE)
+try:
+    df = pd.read_csv(config.OUTPUT_FILE)
+except FileNotFoundError:
+    logger.error(
+        "%s not found. Run `python preprocess.py` first to generate it (see README).",
+        config.OUTPUT_FILE,
+    )
+    raise
 
 df['Cluster Name'] = df['Cluster'].map(config.CLUSTER_NAMES)
 
