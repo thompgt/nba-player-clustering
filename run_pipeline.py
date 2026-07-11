@@ -5,14 +5,14 @@ import sys
 logger = logging.getLogger(__name__)
 
 
-def run_command(command):
+def run_command(command: list[str]) -> None:
     logger.info("Executing: %s", " ".join(command))
     result = subprocess.run(command, shell=False)
     if result.returncode != 0:
         logger.error("Command failed with return code %s", result.returncode)
         sys.exit(1)
 
-def main():
+def main() -> None:
     logger.info("Starting NBA Player Clustering Pipeline...")
 
     # 1. Preprocess

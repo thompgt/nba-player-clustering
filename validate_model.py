@@ -1,17 +1,17 @@
 import logging
+import os
 import sys
 
 import pandas as pd
 from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
-import os
 
 import config
 
 logger = logging.getLogger(__name__)
 
 
-def validate():
+def validate() -> bool:
     """Return True if the processed data passes validation, False otherwise."""
     if not os.path.exists(config.OUTPUT_FILE):
         logger.error("%s not found. Run `python preprocess.py` first to generate it.", config.OUTPUT_FILE)

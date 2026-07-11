@@ -18,7 +18,13 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint with ruff
+        run: ruff check .
+
+      - name: Type check with mypy
+        run: mypy preprocess.py validate_model.py run_pipeline.py config.py
 
       - name: Run tests
         run: pytest -v
