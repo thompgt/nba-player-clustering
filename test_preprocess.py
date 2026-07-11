@@ -64,3 +64,19 @@ def test_multi_team_players_collapse_to_tot_row(processed):
         rows = df[df["Player"] == player]
         assert len(rows) == 1
         assert rows.iloc[0]["Tm"] == "TOT"
+
+
+def test_missing_required_column_raises_clear_error(tmp_path):
+    raw = pd.read_csv(INPUT_FILE, sep=";", encoding="latin1")
+    bad_file = tmp_path / "missing_column.csv"
+    raw.drop(columns=["PTS"]).to_csv(bad_file, sep=";", index=False, encoding="latin1")
+
+    with pytest.raises(ValueError, match="PTS"):
+        preprocess_data(str(bad_file))
+
+
+def test_missing_input_file_raises_clear_error(tmp_path):
+    missing_file = tmp_path / "does_not_exist.csv"
+
+    with pytest.raises(FileNotFoundError, match="not found"):
+        preprocess_data(str(missing_file))
