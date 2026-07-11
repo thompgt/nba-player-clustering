@@ -5,15 +5,17 @@ from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
 import os
 
+import config
+
 logger = logging.getLogger(__name__)
 
 
 def validate():
-    if not os.path.exists('processed_nba_stats.csv'):
-        logger.error("processed_nba_stats.csv not found.")
+    if not os.path.exists(config.OUTPUT_FILE):
+        logger.error("%s not found.", config.OUTPUT_FILE)
         return
 
-    df = pd.read_csv('processed_nba_stats.csv')
+    df = pd.read_csv(config.OUTPUT_FILE)
 
     # Check columns
     expected_cols = ['Player', 'Cluster', 'PC1', 'PC2', 'PC3']
@@ -25,8 +27,7 @@ def validate():
     logger.info("Columns validation passed.")
 
     # Calculate Silhouette Score
-    clustering_features = ['PTS', 'TRB', 'AST', 'STL', 'BLK', '3P', '2P', 'FT', 'ORB', 'DRB', 'FG%', '3P%', 'FT%']
-    X = df[clustering_features]
+    X = df[config.CLUSTERING_FEATURES]
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
@@ -36,7 +37,7 @@ def validate():
     # Basic Cluster Stats
     logger.info("Cluster Distribution:\n%s", df['Cluster'].value_counts().sort_index())
 
-    if score > 0.1: # Threshold for "something reasonable" in high-dimensional player stats
+    if score > config.SILHOUETTE_THRESHOLD:
         logger.info("Validation Successful!")
     else:
         logger.warning("Validation Warning: Low Silhouette Score. Model might need tuning.")

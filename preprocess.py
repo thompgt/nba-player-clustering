@@ -8,6 +8,8 @@ from sklearn.decomposition import PCA
 import plotly.express as px
 import os
 
+import config
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,24 +24,16 @@ def preprocess_data(file_path):
     
     # Fill NaN values (mostly for % stats)
     df = df.fillna(0)
-    
-    # Features for clustering
-    features = ['PTS', 'TRB', 'AST', 'STL', 'BLK', '3P', '2P', 'FT', 'ORB', 'DRB']
-    
-    # Normalize by minutes played? Actually per game stats are already provided.
-    # Let's use some efficiency stats too.
-    # df['FG%'], df['3P%'], df['FT%'] are already there.
-    
-    clustering_features = features + ['FG%', '3P%', 'FT%']
-    
+
+    clustering_features = config.CLUSTERING_FEATURES
+
     X = df[clustering_features]
-    
+
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
-    
+
     # K-Means clustering
-    n_clusters = 6 # Standard number of archetypes
-    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+    kmeans = KMeans(n_clusters=config.N_CLUSTERS, random_state=config.RANDOM_STATE, n_init=10)
     df['Cluster'] = kmeans.fit_predict(X_scaled)
     
     # PCA for visualization
@@ -57,10 +51,10 @@ def preprocess_data(file_path):
     centers_df = pd.DataFrame(cluster_centers, columns=clustering_features)
     logger.info("Cluster centers:\n%s", centers_df)
 
-    df.to_csv('processed_nba_stats.csv', index=False)
-    logger.info("Processed data saved to processed_nba_stats.csv")
+    df.to_csv(config.OUTPUT_FILE, index=False)
+    logger.info("Processed data saved to %s", config.OUTPUT_FILE)
     return df
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    preprocess_data('nba_stats.csv')
+    preprocess_data(config.INPUT_FILE)

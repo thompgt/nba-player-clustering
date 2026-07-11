@@ -4,22 +4,15 @@ import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 
-# Load data
-df = pd.read_csv("processed_nba_stats.csv")
+import config
 
-# Cluster Mapping
-cluster_names = {
-    0: "Role Players / Shooters",
-    1: "Bench Guards/Wings",
-    2: "Star Players",
-    3: "Limited Minutes / Specialists",
-    4: "Starting Bigs",
-    5: "Reserve Bigs"
-}
-df['Cluster Name'] = df['Cluster'].map(cluster_names)
+# Load data
+df = pd.read_csv(config.OUTPUT_FILE)
+
+df['Cluster Name'] = df['Cluster'].map(config.CLUSTER_NAMES)
 
 # Features for radar chart
-radar_features = ['PTS', 'TRB', 'AST', 'STL', 'BLK', '3P']
+radar_features = config.RADAR_FEATURES
 
 @solara.component
 def Page():
@@ -69,7 +62,7 @@ def Page():
                 r=cluster_avg.values,
                 theta=radar_features,
                 fill='toself',
-                name=f"{cluster_names[cluster_id]} Average",
+                name=f"{config.CLUSTER_NAMES[cluster_id]} Average",
                 line_color='rgba(255, 0, 0, 0.5)'
             ))
 

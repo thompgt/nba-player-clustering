@@ -4,11 +4,12 @@ import shutil
 import pandas as pd
 import pytest
 
+import config
 from preprocess import preprocess_data
 
-INPUT_FILE = "nba_stats.csv"
-OUTPUT_FILE = "processed_nba_stats.csv"
-EXPECTED_N_CLUSTERS = 6
+INPUT_FILE = config.INPUT_FILE
+OUTPUT_FILE = config.OUTPUT_FILE
+EXPECTED_N_CLUSTERS = config.N_CLUSTERS
 
 
 @pytest.fixture(scope="module")
