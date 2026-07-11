@@ -1,4 +1,5 @@
 import logging
+import sys
 
 import pandas as pd
 from sklearn.metrics import silhouette_score
@@ -11,9 +12,10 @@ logger = logging.getLogger(__name__)
 
 
 def validate():
+    """Return True if the processed data passes validation, False otherwise."""
     if not os.path.exists(config.OUTPUT_FILE):
         logger.error("%s not found. Run `python preprocess.py` first to generate it.", config.OUTPUT_FILE)
-        return
+        return False
 
     df = pd.read_csv(config.OUTPUT_FILE)
 
@@ -22,7 +24,7 @@ def validate():
     for col in expected_cols:
         if col not in df.columns:
             logger.error("Missing column %s", col)
-            return
+            return False
 
     logger.info("Columns validation passed.")
 
@@ -39,9 +41,11 @@ def validate():
 
     if score > config.SILHOUETTE_THRESHOLD:
         logger.info("Validation Successful!")
-    else:
-        logger.warning("Validation Warning: Low Silhouette Score. Model might need tuning.")
+        return True
+
+    logger.warning("Validation Warning: Low Silhouette Score. Model might need tuning.")
+    return False
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    validate()
+    sys.exit(0 if validate() else 1)

@@ -6,8 +6,8 @@ logger = logging.getLogger(__name__)
 
 
 def run_command(command):
-    logger.info("Executing: %s", command)
-    result = subprocess.run(command, shell=True)
+    logger.info("Executing: %s", " ".join(command))
+    result = subprocess.run(command, shell=False)
     if result.returncode != 0:
         logger.error("Command failed with return code %s", result.returncode)
         sys.exit(1)
@@ -16,13 +16,13 @@ def main():
     logger.info("Starting NBA Player Clustering Pipeline...")
 
     # 1. Preprocess
-    run_command("python preprocess.py")
+    run_command([sys.executable, "preprocess.py"])
 
     # 2. Validate
-    run_command("python validate_model.py")
+    run_command([sys.executable, "validate_model.py"])
 
     # 3. Test
-    run_command("pytest test_preprocess.py")
+    run_command([sys.executable, "-m", "pytest", "test_preprocess.py"])
 
     logger.info("Pipeline completed successfully!")
 
