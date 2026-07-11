@@ -49,6 +49,14 @@ pytest
 solara run app.py
 ```
 
+## Running with Docker
+Build and run the dashboard in a container (preprocessing runs at build time, so the image is ready to serve immediately):
+```bash
+docker build -t nba-player-clustering .
+docker run -p 8765:8765 nba-player-clustering
+```
+Then open http://localhost:8765.
+
 ## Data Source
 The project uses NBA player per-game stats sourced from [Basketball-Reference](https://www.basketball-reference.com/), committed to this repo as `nba_stats.csv` so the pipeline runs end-to-end from a fresh clone with no manual data-fetch step.
 
