@@ -1,9 +1,7 @@
-pandas
-numpy
-scikit-learn
-plotly
-solara
-kaggle
-matplotlib
-ipywidgets
-pytest
+pandas==2.3.2
+numpy==2.3.3
+scikit-learn==1.6.1
+plotly==6.5.0
+solara==1.57.4
+ipywidgets==8.1.8
+pytest==9.0.1
