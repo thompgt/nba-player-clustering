@@ -1,3 +1,5 @@
+import logging
+
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
@@ -5,6 +7,9 @@ from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 import plotly.express as px
 import os
+
+logger = logging.getLogger(__name__)
+
 
 def preprocess_data(file_path):
     # Load data with semicolon separator
@@ -50,11 +55,12 @@ def preprocess_data(file_path):
     
     cluster_centers = scaler.inverse_transform(kmeans.cluster_centers_)
     centers_df = pd.DataFrame(cluster_centers, columns=clustering_features)
-    print("Cluster Centers:\n", centers_df)
-    
+    logger.info("Cluster centers:\n%s", centers_df)
+
     df.to_csv('processed_nba_stats.csv', index=False)
-    print("Processed data saved to processed_nba_stats.csv")
+    logger.info("Processed data saved to processed_nba_stats.csv")
     return df
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     preprocess_data('nba_stats.csv')
