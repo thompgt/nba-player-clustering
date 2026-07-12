@@ -1,12 +1,9 @@
 import logging
 
 import pandas as pd
-import numpy as np
-from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
-import plotly.express as px
-import os
+from sklearn.preprocessing import StandardScaler
 
 import config
 
@@ -15,7 +12,7 @@ logger = logging.getLogger(__name__)
 REQUIRED_COLUMNS = ['Player', 'Tm'] + config.CLUSTERING_FEATURES
 
 
-def preprocess_data(file_path):
+def preprocess_data(file_path: str) -> pd.DataFrame:
     # Load data with semicolon separator
     try:
         df = pd.read_csv(file_path, sep=';', encoding='latin1')

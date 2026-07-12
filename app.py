@@ -1,10 +1,9 @@
 import logging
 
-import solara
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import numpy as np
+import solara
 
 import config
 
@@ -31,7 +30,12 @@ def Page():
     
     with solara.Sidebar():
         solara.Markdown("## Filters")
-        solara.Select(label="Select Player", value=selected_player, values=df['Player'].tolist(), on_value=set_selected_player)
+        solara.Select(
+            label="Select Player",
+            value=selected_player,
+            values=df['Player'].tolist(),
+            on_value=set_selected_player,
+        )
         
         player_data = df[df['Player'] == selected_player].iloc[0]
         solara.Markdown(f"### {player_data['Player']}")

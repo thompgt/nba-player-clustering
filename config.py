@@ -5,23 +5,23 @@ validate_model.py, app.py, and the test suite, so they can't drift out
 of sync (e.g. app.py's cluster labels vs. preprocess.py's cluster count).
 """
 
-INPUT_FILE = "nba_stats.csv"
-OUTPUT_FILE = "processed_nba_stats.csv"
+INPUT_FILE: str = "nba_stats.csv"
+OUTPUT_FILE: str = "processed_nba_stats.csv"
 
-N_CLUSTERS = 6
-RANDOM_STATE = 42
+N_CLUSTERS: int = 6
+RANDOM_STATE: int = 42
 
 # Minimum silhouette score for validate_model.py to consider the
 # clustering "reasonable" for this high-dimensional, noisy stat space.
-SILHOUETTE_THRESHOLD = 0.1
+SILHOUETTE_THRESHOLD: float = 0.1
 
-COUNTING_STATS = ["PTS", "TRB", "AST", "STL", "BLK", "3P", "2P", "FT", "ORB", "DRB"]
-SHOOTING_PERCENTAGES = ["FG%", "3P%", "FT%"]
-CLUSTERING_FEATURES = COUNTING_STATS + SHOOTING_PERCENTAGES
+COUNTING_STATS: list[str] = ["PTS", "TRB", "AST", "STL", "BLK", "3P", "2P", "FT", "ORB", "DRB"]
+SHOOTING_PERCENTAGES: list[str] = ["FG%", "3P%", "FT%"]
+CLUSTERING_FEATURES: list[str] = COUNTING_STATS + SHOOTING_PERCENTAGES
 
-RADAR_FEATURES = ["PTS", "TRB", "AST", "STL", "BLK", "3P"]
+RADAR_FEATURES: list[str] = ["PTS", "TRB", "AST", "STL", "BLK", "3P"]
 
-CLUSTER_NAMES = {
+CLUSTER_NAMES: dict[int, str] = {
     0: "Role Players / Shooters",
     1: "Bench Guards/Wings",
     2: "Star Players",
