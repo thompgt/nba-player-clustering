@@ -2,6 +2,15 @@
 
 An interactive web application built with [Solara](https://solara.dev/) and [Plotly](https://plotly.com/) to cluster NBA players into archetypes based on their performance metrics and visualize their profiles using radar charts.
 
+## Tech Stack
+
+![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![scikit-learn](https://img.shields.io/badge/scikit--learn-F7931E?style=for-the-badge&logo=scikitlearn&logoColor=white)
+![K--Means Clustering](https://img.shields.io/badge/K--Means%20Clustering-0B7261?style=for-the-badge)
+![PCA](https://img.shields.io/badge/PCA-6A4C93?style=for-the-badge)
+![Silhouette Analysis](https://img.shields.io/badge/Silhouette%20Analysis-B23A48?style=for-the-badge)
+![Plotly](https://img.shields.io/badge/Plotly-3F4F75?style=for-the-badge&logo=plotly&logoColor=white)
+
 ![The Solara dashboard running locally: PCA scatter colored by cluster, a radar chart comparing the selected player to their cluster average, and the cluster/player data tables below.](docs/images/dashboard.png)
 
 *The dashboard at `http://localhost:8765` — pick a player in the sidebar and the PCA view, radar chart, and tables update reactively.*
