@@ -1,6 +1,6 @@
 # NBA Player Clustering Dashboard
 
-An interactive web application built with [Solara](https://solara.dev/) and [Plotly](https://plotly.com/) to cluster NBA players into archetypes based on their performance metrics and visualize their profiles using radar charts.
+An interactive web application built with [Solara](https://solara.dev/) and [Plotly](https://plotly.com/) to cluster NBA players into four playing-style archetypes — **Primary Creators, Interior Bigs, Floor Spacers, Slashing Wings** — and visualize their profiles using radar charts.
 
 ## Tech Stack
 
@@ -16,7 +16,7 @@ An interactive web application built with [Solara](https://solara.dev/) and [Plo
 *The dashboard at `http://localhost:8765` — pick a player in the sidebar and the PCA view, radar chart, and tables update reactively.*
 
 ## Features
-- **Player Archetype Clustering**: Uses K-Means to group players based on normalized stats.
+- **Player Archetype Clustering**: Uses K-Means over per-36-minute rate stats to group players by *style* rather than by playing time.
 - **Interactive PCA Visualization**: Explore the player space in 2D, with the selected player (and an optional comparison player) starred.
 - **Radar Charts**: Compare individual player profiles against each other and against the cluster average.
 - **Similarity Search**: Find the players closest to the selected one in scaled stat space.
@@ -38,7 +38,7 @@ flowchart TD
     end
 
     subgraph pipe["Pipeline — run_pipeline.py"]
-        PRE["preprocess.py<br/>schema check → dedupe TOT rows →<br/>shrink shooting % → StandardScaler →<br/>KMeans(k=6) → PCA(3) →<br/>name clusters by profile"]
+        PRE["preprocess.py<br/>schema check → dedupe TOT rows →<br/>shrink shooting % → per-36 rates →<br/>eligibility filter → StandardScaler →<br/>KMeans(k=4) → PCA(3) →<br/>name clusters by profile"]
         SEL["select_k.py<br/><i>k sweep → model_selection.csv,<br/>warns if N_CLUSTERS is indefensible</i>"]
         VAL["validate_model.py<br/>columns + silhouette + archetype-match gate<br/><i>exits non-zero on failure</i>"]
         TEST["pytest<br/><i>preprocess · archetypes · select_k</i>"]
@@ -81,7 +81,7 @@ flowchart TD
 
 `archetypes.py` owns the *names*. See [Naming the archetypes](#naming-the-archetypes) below for why they aren't in `config.py`.
 
-`preprocess.py` reads the committed `nba_stats.csv`, checks the required columns are present, collapses traded players onto their `TOT` (season-total) row, shrinks the shooting percentages toward the league rate (see [Shooting percentages](#shooting-percentages)), then standardizes the 13 clustering features and fits `KMeans(k=6)`. It matches each resulting cluster to a named archetype, fits a 3-component PCA purely for visualization, and writes stats + `Cluster` + `Archetype` + `PC1/PC2/PC3` out to `processed_nba_stats.csv`.
+`preprocess.py` reads the committed `nba_stats.csv`, checks the required columns are present, collapses traded players onto their `TOT` (season-total) row, shrinks the shooting percentages toward the league rate (see [Shooting percentages](#shooting-percentages)), converts the counting stats to per-36-minute rates, then standardizes the 11 clustering features and fits `KMeans(k=4)` over the players who clear the [eligibility floors](#who-gets-clustered). It matches each resulting cluster to a named archetype, fits a 3-component PCA purely for visualization, and writes stats + `Cluster` + `Archetype` + `PC1/PC2/PC3` out to `processed_nba_stats.csv`.
 
 `validate_model.py` is a gate, not a report: it re-scales the processed features, computes the silhouette score, re-derives the archetype match, and exits non-zero if the score falls below `SILHOUETTE_THRESHOLD` or a cluster no longer resembles the archetype it is labelled with. `run_pipeline.py` chains preprocess → validate → pytest and stops at the first failure.
 
@@ -91,10 +91,10 @@ flowchart TD
 
 | File | Responsibility |
 |------|----------------|
-| `config.py` | Shared configuration: input/output paths, `N_CLUSTERS`, `RANDOM_STATE`, silhouette threshold, clustering/radar feature lists. |
+| `config.py` | Shared configuration: input/output paths, `N_CLUSTERS`, `RANDOM_STATE`, eligibility floors, silhouette threshold, clustering/radar feature lists. |
 | `archetypes.py` | Named archetypes, their descriptions, colors and reference statistical profiles, plus the profile-matching that assigns names to clusters. |
 | `nba_stats.csv` | Committed raw input — per-game player stats (semicolon-delimited, `latin1`). |
-| `preprocess.py` | Load → validate schema → dedupe traded players → shrink shooting percentages → scale → K-Means → PCA → name archetypes → write `processed_nba_stats.csv`. |
+| `preprocess.py` | Load → validate schema → dedupe traded players → shrink shooting percentages → per-36 rates → eligibility filter → scale → K-Means → PCA → name archetypes → write `processed_nba_stats.csv`. |
 | `processed_nba_stats.csv` | Generated artifact consumed by both the validator and the app. Not the source of truth; regenerate it. |
 | `validate_model.py` | Quality gate on the generated artifact: required columns present, silhouette score above threshold, archetype names still match their cluster profiles. Exit code drives CI/pipeline. |
 | `run_pipeline.py` | Orchestrator — runs preprocess, validate, and tests in order, aborting on the first non-zero exit. |
@@ -122,13 +122,15 @@ These figures are generated by `make_figures.py` from the repo's own `processed_
 
 ![Six small-multiple scatter plots of PC1 vs PC2, one per cluster; the cluster's members are highlighted in blue against all other players in gray, with the highest-scoring player in each cluster labeled.](docs/images/pca_clusters.png)
 
-*Each panel highlights one K-Means cluster against the full player population. PC1 tracks overall production and PC2 separates perimeter from interior play, so the archetypes occupy visibly distinct regions rather than overlapping blobs. Faceting rather than six colors keeps the clusters distinguishable for colorblind readers.*
+*Each panel highlights one K-Means cluster against the full player population, unranked players included in grey. PC1 separates interior from perimeter play and PC2 tracks on-ball usage. Interior Bigs and Primary Creators occupy clearly distinct regions; Floor Spacers and Slashing Wings overlap here because what divides them is shooting accuracy, which loads on PC3. The three components together explain 68.8% of the variance in the 11 clustering features (PC1 37.5%, PC2 18.8%, PC3 12.4%) — `preprocess.py` logs this on every run. Faceting rather than four colors keeps the clusters distinguishable for colorblind readers.*
 
-### Why k = 6
+### Why k = 4
 
-![Two line charts: inertia falling smoothly from k=2 to k=12, and mean silhouette score peaking at k=2 then declining, with k=6 marked on both.](docs/images/model_selection.png)
+![Two line charts: inertia falling smoothly from k=2 to k=12, and mean silhouette score peaking at k=2 then declining to a local maximum at k=4, with k=4 marked on both.](docs/images/model_selection.png)
 
-*The elbow is soft — per-game box-score stats are a continuum, not naturally separated groups. Silhouette is highest at k=2 (0.36), but that just splits starters from bench; it falls to 0.18 at the shipped k=6 and flattens around 0.15–0.16 beyond it. k=6 is chosen for interpretability, not for peak silhouette.*
+*The elbow is soft — box-score stats are a continuum, not naturally separated groups. Silhouette is highest at k=2 (0.31), but that just splits bigs from perimeter players. Within the interpretable range k=4 is the local maximum (0.1605 against 0.1571 at k=5), and it is the stable choice by a wide margin: mean ARI 0.98 across five seeds, smallest cluster 75 players. Stability collapses past k=6 — at k=8 the mean ARI is 0.47 and the smallest cluster holds 19 players.*
+
+k was 6 until the sweep was made a real pipeline step; the value was inherited, not derived.
 
 The sweep behind that figure is not *in* the figure script — a figure script only runs when someone regenerates PNGs, so k would never be rechecked. `select_k.py` owns it, runs as a pipeline step, and writes [`model_selection.csv`](model_selection.csv) as a committed artifact:
 
@@ -140,6 +142,28 @@ python select_k.py --check    # additionally exit non-zero if k is indefensible
 Per k it records silhouette, inertia, the smallest cluster size, and **stability** — the mean adjusted Rand index between the shipped seed's partition and refits under four other seeds. Stability is the metric that actually matters for a project that attaches human names to clusters: if the partition isn't reproducible, neither are the names.
 
 It then warns when the shipped `N_CLUSTERS` is no longer defensible: not at a local silhouette maximum, mean ARI below 0.75, or producing a cluster smaller than 2% of the player pool. The local-maximum test is applied from `INTERPRETABLE_K_MIN = 4` upward — silhouette is biased toward small k on continuum data, so comparing against the whole curve would recommend k=2 forever.
+
+### Who gets clustered
+
+Of the 572 player-seasons in the file, **399 are clustered and 173 are reported as `Unranked`**. The floors are `MIN_MINUTES_PER_GAME = 10.0` and `MIN_GAMES = 20`.
+
+Clustering everyone used to manufacture an archetype out of sampling noise: a 47-player group averaging 6.7 minutes across 8.7 games, which is a sample size rather than a playing style. It also makes per-36 rates meaningless — a 4-minute cameo scales by a factor of nine.
+
+Unranked players are not deleted. They keep their row, get PCA coordinates projected into the fitted space, and appear in the dashboard's tables and scatter in grey; they simply aren't given an archetype their minutes cannot support.
+
+### Style, not playing time
+
+The counting stats are converted to **per-36-minute rates** before scaling, and the aggregates are dropped in favour of their components. `CLUSTERING_FEATURES` is:
+
+```
+2P/36  3P/36  FT/36  ORB/36  DRB/36  AST/36  STL/36  BLK/36  FG%  3P%  FT%
+```
+
+Two problems this fixes:
+
+**K-means on raw per-game totals is a volume sorter.** The old cluster mean minutes ran 6.7 / 10.6 / 11.6 / 24.1 / 27.2 / 33.9 — a five-fold spread. The partition was mostly a minutes ladder and PC1 tracked overall production, so the "archetypes" were really a depth chart. Under per-36 rates the spread across clusters is under 2×, and what separates them is shot profile and role.
+
+**The feature set used to double-count scoring.** `PTS` is `2*2P + 3*3P + FT` and `TRB` is `ORB + DRB`, so including both the components and their sums (measured r = 0.92 for PTS/2P) weighted scoring volume roughly 4× and rebounding 2× against steals and blocks in the Euclidean distance — an implicit weighting nobody chose. The components are kept and fit; `PTS`, `TRB` and `MP` are kept as reported columns and shown throughout the dashboard.
 
 ### Shooting percentages
 
@@ -159,7 +183,7 @@ K-Means cluster *indices* are an implementation detail. They depend on the rando
 
 Names are therefore never attached to indices. Each archetype in `archetypes.py` owns a **reference profile**: the mean of seven per-game signature stats (`MP`, `PTS`, `TRB`, `AST`, `STL`, `BLK`, `3P`), expressed in standard deviations from the league average, for the cluster a human originally looked at and named. After every refit, each fitted cluster is described in those same terms and matched to the reference profiles by minimum total distance — a bijection, via the Hungarian algorithm, so two clusters can never collapse onto one name.
 
-The signature stats are deliberately *not* the clustering features: they're plain box-score columns that exist regardless of how `CLUSTERING_FEATURES` evolves.
+The signature stats are deliberately *not* the clustering features: they're plain box-score columns that exist regardless of how `CLUSTERING_FEATURES` evolves. That decoupling has already paid for itself — the move to per-36 rates changed the feature list entirely without touching the naming machinery, and the gate below is what flagged that the old volume-based names no longer described the new clusters.
 
 `validate_model.py` gates on the match. If any cluster sits further than `MAX_PROFILE_DISTANCE` (1.5 σ) from the archetype it was matched to, the pipeline fails rather than letting a genuinely new kind of cluster inherit a stale name. To inspect the current profiles:
 
@@ -169,9 +193,18 @@ python archetypes.py
 
 ### What separates each archetype
 
-![Heatmap of the six clusters against the thirteen clustering features, colored blue (below league average) to red (above), with the standard-deviation value printed in each cell.](docs/images/cluster_profiles.png)
+![Heatmap of the four clusters against the eleven clustering features, colored blue (below league average) to red (above), with the standard-deviation value printed in each cell.](docs/images/cluster_profiles.png)
 
-*Cluster means in standard deviations from the league average. The structure is legible: Star Players are elevated across every counting stat; Starting Bigs spike on rebounding and blocks while sitting below average on 3P; Reserve Bigs share the interior shape at lower volume; and Limited Minutes / Specialists are uniformly negative on volume. Because the percentages are shrunk toward the league rate, the low-minute clusters are no longer dragged to the floor on FG%/FT% by a handful of attempts.*
+*Cluster means in standard deviations from the league average, over ranked players only. Each archetype is defined by a shape rather than a level:*
+
+| Archetype | n | What defines it |
+|---|---|---|
+| **Primary Creators** | 86 | Highest `AST/36` (5.8) and `FT/36` (3.9); the on-ball engines. 30.7 MPG, 19.3 PPG. |
+| **Interior Bigs** | 75 | Highest `ORB/36` (3.6), `DRB/36` (7.4), `BLK/36` (1.6) and `FG%` (.55); lowest `3P/36` (0.5). |
+| **Floor Spacers** | 114 | Highest `3P/36` (2.7) and `3P%` (.38) outside the creators, with little interior involvement. |
+| **Slashing Wings** | 124 | Score inside the arc rather than from it (`3P/36` 1.5 at .34); the least efficient group, `FG%` .44. |
+
+*Note that the minutes columns are nearly flat across the four — Interior Bigs average 21.7 MPG and Floor Spacers 22.8, against 19.0 for Slashing Wings. That is the point: this is a partition of styles, not a depth chart.*
 
 ## Setup
 1. Clone the repository:

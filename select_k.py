@@ -42,7 +42,7 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import adjusted_rand_score, silhouette_score
 
 import config
-from preprocess import build_feature_matrix, load_players
+from preprocess import build_feature_matrix, eligible_mask, load_players
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +121,9 @@ def report(table: pd.DataFrame, k: int, n_players: int) -> list[str]:
         problems.append(
             f"k={k} is below INTERPRETABLE_K_MIN={INTERPRETABLE_K_MIN}: too coarse to be archetypes."
         )
-    elif not is_local_maximum(table, k):
+    elif not is_local_maximum(interpretable(table), k):
+        # Compared within the interpretable slice: k=3 always outscores k=4 on
+        # continuum data, which would veto every archetype-sized k forever.
         candidates = interpretable(table)["silhouette"]
         better = candidates.idxmax()
         problems.append(
@@ -156,7 +158,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    # Eligible players only: the sweep must see exactly the rows the shipped
+    # model is fit on, or it scores a partition nothing ever ships.
     df = load_players(config.INPUT_FILE)
+    df = df[eligible_mask(df)]
     X, _ = build_feature_matrix(df)
 
     table = sweep(X)

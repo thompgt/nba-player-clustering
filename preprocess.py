@@ -13,10 +13,13 @@ logger = logging.getLogger(__name__)
 
 _SHOOTING_COLUMNS = [c for pair in config.SHOOTING_RATES.values() for c in pair]
 
+# The per-36 columns are derived, so the raw stats they come from are required
+# instead. CLUSTERING_FEATURES is deliberately not in this list.
 REQUIRED_COLUMNS = sorted(
     set(
-        ['Player', 'Tm', 'G']
-        + config.CLUSTERING_FEATURES
+        ['Player', 'Tm', 'G', 'MP']
+        + config.RATE_STATS
+        + config.SHOOTING_PERCENTAGES
         + archetypes.SIGNATURE_FEATURES
         + _SHOOTING_COLUMNS
     )
@@ -93,6 +96,7 @@ def load_players(file_path: str) -> pd.DataFrame:
     df = df[~((df['Player'].isin(players_with_tot)) & (df['Tm'] != 'TOT'))].copy()
 
     df = shrink_shooting_percentages(df)
+    df = add_per_36_rates(df)
 
     # Fill only the clustering feature columns rather than the whole dataframe,
     # so unrelated columns (e.g. Pos) aren't silently zeroed if they ever
@@ -100,6 +104,32 @@ def load_players(file_path: str) -> pd.DataFrame:
     # columns have already been handled above.
     df[config.CLUSTERING_FEATURES] = df[config.CLUSTERING_FEATURES].fillna(0)
     return df
+
+
+def add_per_36_rates(df: pd.DataFrame) -> pd.DataFrame:
+    """Add a per-36-minutes column for each counting stat used in the model.
+
+    Clustering raw per-game totals makes k-means a volume sorter: cluster mean
+    minutes used to run 6.7 / 10.6 / 11.6 / 24.1 / 27.2 / 33.9, so the partition
+    was mostly a minutes ladder and PC1 tracked overall production. Rates hold
+    playing time constant, so what is left is style.
+
+    Players below the minutes floor would produce wild rates from tiny
+    denominators; they are dropped from the fit by ``eligible_mask``.
+    """
+    df = df.copy()
+    minutes = df['MP'].astype(float)
+    safe_minutes = minutes.where(minutes > 0)
+    for stat in config.RATE_STATS:
+        df[f"{stat}{config.PER_36_SUFFIX}"] = df[stat].astype(float) * 36.0 / safe_minutes
+    return df
+
+
+def eligible_mask(df: pd.DataFrame) -> pd.Series:
+    """Rows with enough playing time for a per-36 rate to mean anything."""
+    return (df['MP'].astype(float) >= config.MIN_MINUTES_PER_GAME) & (
+        df['G'].astype(float) >= config.MIN_GAMES
+    )
 
 
 def build_feature_matrix(df: pd.DataFrame) -> tuple[np.ndarray, StandardScaler]:
@@ -111,19 +141,50 @@ def build_feature_matrix(df: pd.DataFrame) -> tuple[np.ndarray, StandardScaler]:
 def preprocess_data(file_path: str) -> pd.DataFrame:
     df = load_players(file_path)
     clustering_features = config.CLUSTERING_FEATURES
-    X_scaled, scaler = build_feature_matrix(df)
+
+    # Fit on eligible players only. Low-minute players are kept in the output
+    # so the dashboard can still show them, but they are reported as unranked
+    # rather than being given an archetype their sample cannot support.
+    eligible = eligible_mask(df)
+    logger.info(
+        "%d of %d players are eligible (>= %.1f MPG and >= %d games); %d reported as %s.",
+        int(eligible.sum()), len(df), config.MIN_MINUTES_PER_GAME, config.MIN_GAMES,
+        int((~eligible).sum()), archetypes.UNRANKED,
+    )
+    if eligible.sum() < config.N_CLUSTERS:
+        raise ValueError(
+            f"Only {int(eligible.sum())} players clear the eligibility floors "
+            f"({config.MIN_MINUTES_PER_GAME} MPG, {config.MIN_GAMES} games), which is fewer "
+            f"than N_CLUSTERS={config.N_CLUSTERS}. Lower the floors in config.py."
+        )
+
+    fitted = df[eligible]
+    X_scaled, scaler = build_feature_matrix(fitted)
 
     # K-Means clustering
     kmeans = KMeans(n_clusters=config.N_CLUSTERS, random_state=config.RANDOM_STATE, n_init=10)
-    df['Cluster'] = kmeans.fit_predict(X_scaled)
-    
-    # PCA for visualization
+    labels = kmeans.fit_predict(X_scaled)
+    df['Cluster'] = archetypes.UNRANKED_CLUSTER
+    df.loc[eligible, 'Cluster'] = labels
+
+    # PCA for visualization. Fit on the same rows as the model, then project
+    # the ineligible players into that space so they can still be plotted.
     pca = PCA(n_components=3)
-    pca_results = pca.fit_transform(X_scaled)
+    pca.fit(X_scaled)
+    all_scaled = scaler.transform(df[clustering_features])
+    pca_results = pca.transform(all_scaled)
     df['PC1'] = pca_results[:, 0]
     df['PC2'] = pca_results[:, 1]
     df['PC3'] = pca_results[:, 2]
-    
+
+    explained = pca.explained_variance_ratio_
+    logger.info(
+        "PCA explained variance: %s (cumulative %.1f%% of %d features)",
+        ", ".join(f"PC{i + 1} {r:.1%}" for i, r in enumerate(explained)),
+        explained.sum() * 100,
+        len(clustering_features),
+    )
+
     cluster_centers = scaler.inverse_transform(kmeans.cluster_centers_)
     centers_df = pd.DataFrame(cluster_centers, columns=clustering_features)
     logger.info("Cluster centers:\n%s", centers_df)
@@ -133,8 +194,8 @@ def preprocess_data(file_path: str) -> pd.DataFrame:
     # seed-dependent, so the name is derived from the centroid's shape, never
     # from its index. The distances are logged so a drifting cluster is
     # visible here as well as in validate_model.py, which gates on them.
-    names, distances = archetypes.assign_archetypes(df, df['Cluster'])
-    df['Archetype'] = df['Cluster'].map(names)
+    names, distances = archetypes.assign_archetypes(fitted, labels)
+    df['Archetype'] = df['Cluster'].map(names).fillna(archetypes.UNRANKED)
     for cid in sorted(names):
         logger.info(
             "Cluster %s -> %-30s (profile distance %.2f, n=%d)",

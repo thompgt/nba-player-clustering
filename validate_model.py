@@ -29,12 +29,24 @@ def validate() -> bool:
 
     logger.info("Columns validation passed.")
 
+    # Score only the rows the model was actually fit on. Unranked players sit
+    # outside every cluster; including them would score a partition nobody built.
+    ranked = df[df['Cluster'] != archetypes.UNRANKED_CLUSTER]
+    logger.info(
+        "%d ranked players, %d unranked.", len(ranked), len(df) - len(ranked)
+    )
+    if ranked['Cluster'].nunique() != config.N_CLUSTERS:
+        logger.error(
+            "Expected %d clusters, found %d.", config.N_CLUSTERS, ranked['Cluster'].nunique()
+        )
+        return False
+
     # Calculate Silhouette Score
-    X = df[config.CLUSTERING_FEATURES]
+    X = ranked[config.CLUSTERING_FEATURES]
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    score = silhouette_score(X_scaled, df['Cluster'])
+    score = silhouette_score(X_scaled, ranked['Cluster'])
     logger.info("Silhouette Score: %.4f", score)
 
     # Basic Cluster Stats
@@ -49,7 +61,7 @@ def validate() -> bool:
         )
         ok = False
 
-    if not _validate_archetypes(df):
+    if not _validate_archetypes(ranked):
         ok = False
 
     if ok:

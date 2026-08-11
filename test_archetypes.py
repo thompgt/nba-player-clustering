@@ -45,14 +45,18 @@ def baseline(tmp_path_factory):
         os.chdir(cwd)
 
 
+def _ranked(df):
+    return df[df["Cluster"] != archetypes.UNRANKED_CLUSTER]
+
+
 def test_every_row_gets_an_archetype(baseline):
     assert baseline["Archetype"].notna().all()
-    assert set(baseline["Archetype"]) <= set(archetypes.ARCHETYPE_NAMES)
+    assert set(baseline["Archetype"]) <= set(archetypes.ARCHETYPE_NAMES) | {archetypes.UNRANKED}
 
 
 def test_archetype_names_are_a_bijection_over_clusters(baseline):
     """Two clusters must never collapse onto the same name."""
-    pairs = baseline[["Cluster", "Archetype"]].drop_duplicates()
+    pairs = _ranked(baseline)[["Cluster", "Archetype"]].drop_duplicates()
     assert len(pairs) == config.N_CLUSTERS
     assert pairs["Archetype"].nunique() == config.N_CLUSTERS
 
@@ -69,23 +73,27 @@ def test_names_follow_the_profile_regardless_of_seed(tmp_path, monkeypatch, seed
     index 2 at seed 42 but 3/0/0/0 at seeds 0/1/7/2024 -- so a fixed
     ``{2: "Star Players"}`` map mislabelled the entire dashboard. Naming by
     profile has to be immune to that: whatever the indices come out as, the
-    highest-scoring group is still "Star Players", the shot-blocking group is
-    still "Starting Bigs", and the least-used group is still the specialists.
+    highest-usage group is still "Primary Creators", the rim-protecting group
+    is still "Interior Bigs", and the three-point group is still "Floor
+    Spacers".
     """
-    df = _run(tmp_path, seed, monkeypatch)
-    means = df.groupby("Archetype")[["PTS", "BLK", "MP"]].mean()
+    df = _ranked(_run(tmp_path, seed, monkeypatch))
+    means = df.groupby("Archetype")[["PTS", "AST", "BLK", "TRB", "3P"]].mean()
 
-    assert means["PTS"].idxmax() == "Star Players"
-    assert means["BLK"].idxmax() == "Starting Bigs"
-    assert means["MP"].idxmin() == "Limited Minutes / Specialists"
+    assert means["PTS"].idxmax() == "Primary Creators"
+    assert means["AST"].idxmax() == "Primary Creators"
+    assert means["BLK"].idxmax() == "Interior Bigs"
+    assert means["TRB"].idxmax() == "Interior Bigs"
+    assert means["3P"].idxmax() in {"Primary Creators", "Floor Spacers"}
+    assert means["3P"].idxmin() == "Interior Bigs"
 
 
 @pytest.mark.parametrize("seed", SEEDS)
 def test_archetype_membership_is_stable_across_seeds(tmp_path, monkeypatch, baseline, seed):
     """Most players keep their archetype when the model is refit."""
     df = _run(tmp_path, seed, monkeypatch)
-    merged = baseline[["Player", "Archetype"]].merge(
-        df[["Player", "Archetype"]], on="Player", suffixes=("_base", "_seed")
+    merged = _ranked(baseline)[["Player", "Archetype"]].merge(
+        _ranked(df)[["Player", "Archetype"]], on="Player", suffixes=("_base", "_seed")
     )
     agreement = (merged["Archetype_base"] == merged["Archetype_seed"]).mean()
     assert agreement > 0.9, f"only {agreement:.1%} of players kept their archetype at seed {seed}"
@@ -93,14 +101,16 @@ def test_archetype_membership_is_stable_across_seeds(tmp_path, monkeypatch, base
 
 def test_profiles_are_measured_against_the_player_population(baseline):
     """Cluster profiles are player-population z-scores, so they average to ~0."""
-    profiles = archetypes.cluster_profiles(baseline, baseline["Cluster"])
-    weights = baseline["Cluster"].value_counts().sort_index().to_numpy()
+    ranked = _ranked(baseline)
+    profiles = archetypes.cluster_profiles(ranked, ranked["Cluster"])
+    weights = ranked["Cluster"].value_counts().sort_index().to_numpy()
     weighted_mean = np.average(profiles.to_numpy(), axis=0, weights=weights)
     assert np.allclose(weighted_mean, 0.0, atol=1e-6)
 
 
 def test_assignment_rejects_a_mismatched_cluster_count(baseline):
-    trimmed = baseline[baseline["Cluster"] != baseline["Cluster"].max()]
+    ranked = _ranked(baseline)
+    trimmed = ranked[ranked["Cluster"] != ranked["Cluster"].max()]
     with pytest.raises(ValueError, match="archetypes are defined"):
         archetypes.assign_archetypes(trimmed, trimmed["Cluster"])
 

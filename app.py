@@ -31,8 +31,10 @@ if "Archetype" not in df.columns:
 RADAR_FEATURES = config.RADAR_FEATURES
 # Archetype order and color come from archetypes.py, so charts stay consistent
 # with each other and survive a refit that renumbers the cluster indices.
-ARCHETYPE_ORDER = [a.name for a in archetypes.ARCHETYPES]
+# Unranked players (below the eligibility floors) trail the named archetypes.
+ARCHETYPE_ORDER = [a.name for a in archetypes.ARCHETYPES] + [archetypes.UNRANKED]
 ARCHETYPE_COLOR_MAP = {a.name: a.color for a in archetypes.ARCHETYPES}
+ARCHETYPE_COLOR_MAP[archetypes.UNRANKED] = archetypes.UNRANKED_COLOR
 TEAMS = sorted(df["Tm"].unique().tolist())
 
 # Standardized feature matrix, reused to find statistically similar players.
@@ -216,12 +218,21 @@ def Page():
         solara.DataFrame(find_similar_players(selected_player))
 
     with solara.Card("Archetype Explorer"):
-        for arch in archetypes.ARCHETYPES:
-            members = df[df["Archetype"] == arch.name]
-            with solara.Details(summary=f"{arch.name}  ({len(members)} players)"):
+        blurbs = [(a.name, a.description) for a in archetypes.ARCHETYPES]
+        blurbs.append(
+            (
+                archetypes.UNRANKED,
+                f"Below the eligibility floors ({config.MIN_MINUTES_PER_GAME:.0f} minutes per "
+                f"game and {config.MIN_GAMES} games), so they are reported but not clustered — "
+                "a handful of minutes is a sample size, not a playing style.",
+            )
+        )
+        for name, description in blurbs:
+            members = df[df["Archetype"] == name]
+            with solara.Details(summary=f"{name}  ({len(members)} players)"):
                 with solara.Column(gap="8px"):
-                    ArchetypeBadge(arch.name)
-                    solara.Markdown(arch.description)
+                    ArchetypeBadge(name)
+                    solara.Markdown(description)
                     avg = members[RADAR_FEATURES].mean().round(1)
                     solara.Markdown(
                         " · ".join(f"**{stat}:** {avg[stat]}" for stat in RADAR_FEATURES)

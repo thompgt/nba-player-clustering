@@ -64,7 +64,12 @@ def load() -> pd.DataFrame:
 
 def fig_pca_facets(df: pd.DataFrame) -> str:
     """One small multiple per cluster: the chosen cluster against all players."""
-    fig, axes = plt.subplots(2, 3, figsize=(11, 6.6), sharex=True, sharey=True)
+    n = len(archetypes.ARCHETYPES)
+    cols = 3 if n % 3 == 0 else 2
+    rows = -(-n // cols)
+    fig, axes = plt.subplots(
+        rows, cols, figsize=(3.7 * cols, 3.3 * rows), sharex=True, sharey=True, squeeze=False
+    )
     for arch, ax in zip(archetypes.ARCHETYPES, axes.ravel()):
         sub = df[df["Archetype"] == arch.name]
         ax.scatter(df["PC1"], df["PC2"], s=9, c=CONTEXT, linewidths=0, zorder=1)
@@ -72,7 +77,7 @@ def fig_pca_facets(df: pd.DataFrame) -> str:
             sub["PC1"], sub["PC2"], s=16, c=ACCENT, linewidths=0.4,
             edgecolors=SURFACE, zorder=2,
         )
-        ax.set_title(f"{arch.name}  ({len(sub)} players)", loc="left", color=INK)
+        ax.set_title(f"{arch.name}  (n={len(sub)})", loc="left", color=INK)
         ax.grid(True, linewidth=0.6, zorder=0)
         ax.set_axisbelow(True)
         # Label the most productive player in the cluster as an anchor.
@@ -87,8 +92,11 @@ def fig_pca_facets(df: pd.DataFrame) -> str:
         ax.set_xlabel("PC1")
     for ax in axes[:, 0]:
         ax.set_ylabel("PC2")
+    for ax in axes.ravel()[len(archetypes.ARCHETYPES):]:
+        ax.set_visible(False)
     fig.suptitle(
-        "NBA player archetypes in PCA space — each panel highlights one K-Means cluster",
+        "NBA player archetypes in PCA space — each panel highlights one K-Means cluster\n"
+        "grey points are all players, including the unranked",
         x=0.01, ha="left", fontsize=12, color=INK,
     )
     fig.tight_layout()
@@ -147,6 +155,9 @@ def fig_model_selection() -> str:
 
 def fig_cluster_profiles(df: pd.DataFrame) -> str:
     """Heatmap of cluster mean per feature, in standard deviations from league mean."""
+    # Ranked players only: unranked rows were never fit, and including them
+    # would shift the league baseline the z-scores are measured against.
+    df = df[df["Archetype"] != archetypes.UNRANKED]
     feats = config.CLUSTERING_FEATURES
     z = (df[feats] - df[feats].mean()) / df[feats].std()
     z["Archetype"] = df["Archetype"]

@@ -42,6 +42,13 @@ SIGNATURE_FEATURES: list[str] = ["MP", "PTS", "TRB", "AST", "STL", "BLK", "3P"]
 # was matched to is not really that archetype any more.
 MAX_PROFILE_DISTANCE: float = 1.5
 
+# Players below the eligibility floors in config.py are not clustered: a
+# handful of minutes is a sample size, not a playing style. They are carried
+# through the pipeline under this label so the dashboard can still show them.
+UNRANKED: str = "Unranked"
+UNRANKED_CLUSTER: int = -1
+UNRANKED_COLOR: str = "#b8b8b8"
+
 
 @dataclass(frozen=True)
 class Archetype:
@@ -63,46 +70,40 @@ class Archetype:
 # names still describe them before pasting them back in.
 ARCHETYPES: list[Archetype] = [
     Archetype(
-        name="Star Players",
+        name="Primary Creators",
         description=(
-            "High-usage players who anchor their team's offense across scoring, "
-            "playmaking, and rebounding."
+            "High-usage on-ball engines: they lead their team in shot creation and "
+            "playmaking, draw the most free throws, and carry the heaviest minutes."
         ),
         color="#E45756",
-        profile={"MP": 1.54, "PTS": 2.08, "TRB": 0.85, "AST": 1.83, "STL": 1.16, "BLK": 0.27, "3P": 1.52},
+        profile={"MP": 0.97, "PTS": 1.28, "TRB": 0.33, "AST": 1.25, "STL": 0.68, "BLK": -0.06, "3P": 0.86},
     ),
     Archetype(
-        name="Starting Bigs",
-        description="Starting-caliber frontcourt players who dominate the paint on both ends.",
-        color="#54A24B",
-        profile={"MP": 0.86, "PTS": 0.66, "TRB": 2.13, "AST": 0.15, "STL": 0.59, "BLK": 2.07, "3P": -0.50},
-    ),
-    Archetype(
-        name="Role Players / Shooters",
-        description="Efficient perimeter shooters who space the floor in a complementary role.",
-        color="#4C78A8",
-        profile={"MP": 0.55, "PTS": 0.24, "TRB": 0.21, "AST": 0.24, "STL": 0.55, "BLK": 0.12, "3P": 0.53},
-    ),
-    Archetype(
-        name="Bench Guards/Wings",
+        name="Interior Bigs",
         description=(
-            "Reserve backcourt/wing players providing depth, ball-handling, and "
-            "secondary scoring."
+            "Frontcourt players who score inside, own the glass at both ends and "
+            "protect the rim. They rarely shoot from range."
+        ),
+        color="#54A24B",
+        profile={"MP": -0.18, "PTS": -0.13, "TRB": 1.09, "AST": -0.40, "STL": -0.30, "BLK": 1.07, "3P": -1.01},
+    ),
+    Archetype(
+        name="Floor Spacers",
+        description=(
+            "Off-ball perimeter shooters. The highest three-point volume and accuracy "
+            "outside the creators, with little interior involvement."
+        ),
+        color="#4C78A8",
+        profile={"MP": -0.04, "PTS": -0.21, "TRB": -0.48, "AST": -0.27, "STL": -0.15, "BLK": -0.29, "3P": 0.52},
+    ),
+    Archetype(
+        name="Slashing Wings",
+        description=(
+            "Wings and forwards who score inside the arc rather than from it, and "
+            "contribute on the glass and in passing lanes. The least efficient scorers."
         ),
         color="#F58518",
-        profile={"MP": -0.72, "PTS": -0.65, "TRB": -0.70, "AST": -0.52, "STL": -0.59, "BLK": -0.54, "3P": -0.40},
-    ),
-    Archetype(
-        name="Reserve Bigs",
-        description="Bench frontcourt players providing rebounding and interior depth.",
-        color="#B279A2",
-        profile={"MP": -0.81, "PTS": -0.69, "TRB": -0.13, "AST": -0.69, "STL": -0.77, "BLK": 0.17, "3P": -1.04},
-    ),
-    Archetype(
-        name="Limited Minutes / Specialists",
-        description="Players with a narrow, specialized role and limited playing time.",
-        color="#72B7B2",
-        profile={"MP": -1.21, "PTS": -1.05, "TRB": -0.97, "AST": -0.75, "STL": -1.00, "BLK": -0.72, "3P": -0.92},
+        profile={"MP": -0.52, "PTS": -0.62, "TRB": -0.45, "AST": -0.38, "STL": -0.15, "BLK": -0.34, "3P": -0.46},
     ),
 ]
 

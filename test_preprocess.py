@@ -50,7 +50,63 @@ def test_preprocess_data_writes_output_file(processed):
 
 def test_cluster_count_matches_configured_n_clusters(processed):
     df, _ = processed
-    assert df["Cluster"].nunique() == EXPECTED_N_CLUSTERS
+    import archetypes
+
+    ranked = df[df["Cluster"] != archetypes.UNRANKED_CLUSTER]
+    assert ranked["Cluster"].nunique() == EXPECTED_N_CLUSTERS
+
+
+def test_low_minute_players_are_reported_but_not_clustered(processed):
+    """A handful of minutes is a sample size, not a playing style."""
+    import archetypes
+
+    df, _ = processed
+    ineligible = df[(df["MP"] < config.MIN_MINUTES_PER_GAME) | (df["G"] < config.MIN_GAMES)]
+    assert len(ineligible) > 0
+    assert (ineligible["Cluster"] == archetypes.UNRANKED_CLUSTER).all()
+    assert (ineligible["Archetype"] == archetypes.UNRANKED).all()
+
+    eligible = df[(df["MP"] >= config.MIN_MINUTES_PER_GAME) & (df["G"] >= config.MIN_GAMES)]
+    assert (eligible["Cluster"] >= 0).all()
+    assert (eligible["Archetype"] != archetypes.UNRANKED).all()
+
+
+def test_unranked_players_are_still_in_the_output(processed):
+    """They're excluded from the fit, not deleted."""
+    import archetypes
+
+    df, _ = processed
+    assert (df["Archetype"] == archetypes.UNRANKED).sum() > 0
+    # They still get PCA coordinates, so the dashboard can plot them.
+    assert df[["PC1", "PC2", "PC3"]].notna().all().all()
+
+
+def test_clusters_are_not_a_minutes_ladder(processed):
+    """Per-36 rates mean the partition separates style, not playing time."""
+    import archetypes
+
+    df, _ = processed
+    ranked = df[df["Cluster"] != archetypes.UNRANKED_CLUSTER]
+    minutes = ranked.groupby("Cluster")["MP"].mean()
+    # On raw per-game counting stats the cluster mean minutes ran
+    # 6.7 / 10.6 / 11.6 / 24.1 / 27.2 / 33.9 -- a 5x spread that was really
+    # just an opportunity ranking.
+    assert minutes.max() / minutes.min() < 2.0
+
+
+def test_aggregate_stats_are_not_clustered_alongside_their_components(processed):
+    """PTS = 2*2P + 3*3P + FT and TRB = ORB + DRB; keep one or the other."""
+    assert "PTS" not in config.CLUSTERING_FEATURES
+    assert "TRB" not in config.CLUSTERING_FEATURES
+    for stat in ("2P", "3P", "FT", "ORB", "DRB"):
+        assert f"{stat}{config.PER_36_SUFFIX}" in config.CLUSTERING_FEATURES
+
+
+def test_per_36_rates_are_scaled_from_minutes(processed):
+    df, _ = processed
+    played = df[df["MP"] > 0]
+    expected = played["AST"] * 36.0 / played["MP"]
+    assert (played[f"AST{config.PER_36_SUFFIX}"] - expected).abs().max() < 1e-9
 
 
 def test_multi_team_players_collapse_to_tot_row(processed):
