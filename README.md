@@ -40,8 +40,8 @@ flowchart TD
     subgraph pipe["Pipeline — run_pipeline.py"]
         PRE["preprocess.py<br/>schema check → dedupe TOT rows →<br/>shrink shooting % → per-36 rates →<br/>eligibility filter → StandardScaler →<br/>KMeans(k=4) → PCA(3) →<br/>name clusters by profile"]
         SEL["select_k.py<br/><i>k sweep → model_selection.csv,<br/>warns if N_CLUSTERS is indefensible</i>"]
-        VAL["validate_model.py<br/>columns + silhouette + archetype-match gate<br/><i>exits non-zero on failure</i>"]
-        TEST["pytest<br/><i>preprocess · archetypes · select_k</i>"]
+        VAL["validate_model.py<br/>columns · silhouette · seed stability ·<br/>cluster size · archetype match<br/><i>exits non-zero on failure</i>"]
+        TEST["pytest<br/><i>preprocess · archetypes ·<br/>select_k · validate_model</i>"]
     end
 
     PROC[("processed_nba_stats.csv<br/><i>stats + Cluster + Archetype + PC1/PC2/PC3</i>")]
@@ -83,7 +83,7 @@ flowchart TD
 
 `preprocess.py` reads the committed `nba_stats.csv`, checks the required columns are present, collapses traded players onto their `TOT` (season-total) row, shrinks the shooting percentages toward the league rate (see [Shooting percentages](#shooting-percentages)), converts the counting stats to per-36-minute rates, then standardizes the 11 clustering features and fits `KMeans(k=4)` over the players who clear the [eligibility floors](#who-gets-clustered). It matches each resulting cluster to a named archetype, fits a 3-component PCA purely for visualization, and writes stats + `Cluster` + `Archetype` + `PC1/PC2/PC3` out to `processed_nba_stats.csv`.
 
-`validate_model.py` is a gate, not a report: it re-scales the processed features, computes the silhouette score, re-derives the archetype match, and exits non-zero if the score falls below `SILHOUETTE_THRESHOLD` or a cluster no longer resembles the archetype it is labelled with. `run_pipeline.py` chains preprocess → validate → pytest and stops at the first failure.
+`validate_model.py` is a gate, not a report — see [Quality gates](#quality-gates). `run_pipeline.py` chains preprocess → select_k → validate → pytest and stops at the first failure.
 
 `app.py` never re-fits anything. It loads `processed_nba_stats.csv` at import time and renders it — so serving is decoupled from training, and the dashboard starts instantly. The `Dockerfile` exploits this by running `preprocess.py` at *build* time, baking the processed CSV into the image so the container is ready to serve on start.
 
@@ -96,7 +96,7 @@ flowchart TD
 | `nba_stats.csv` | Committed raw input — per-game player stats (semicolon-delimited, `latin1`). |
 | `preprocess.py` | Load → validate schema → dedupe traded players → shrink shooting percentages → per-36 rates → eligibility filter → scale → K-Means → PCA → name archetypes → write `processed_nba_stats.csv`. |
 | `processed_nba_stats.csv` | Generated artifact consumed by both the validator and the app. Not the source of truth; regenerate it. |
-| `validate_model.py` | Quality gate on the generated artifact: required columns present, silhouette score above threshold, archetype names still match their cluster profiles. Exit code drives CI/pipeline. |
+| `validate_model.py` | Quality gate on the generated artifact: required columns, silhouette, seed stability, minimum cluster size, and archetype-profile match. Exit code drives CI/pipeline. |
 | `run_pipeline.py` | Orchestrator — runs preprocess, validate, and tests in order, aborting on the first non-zero exit. |
 | `app.py` | Solara dashboard: sidebar player/compare selectors, KPI strip, Plotly PCA scatter, radar chart, similarity search, cluster explorer, filterable player table with CSV export. |
 | `select_k.py` | Sweeps k over the same matrix the model is fit on, writes `model_selection.csv`, and warns when the shipped `N_CLUSTERS` is no longer defensible. |
@@ -105,6 +105,8 @@ flowchart TD
 | `test_preprocess.py` | Pytest suite over `preprocess_data` — output shape, no NaNs, cluster count, `TOT` collapsing, and error handling. |
 | `test_archetypes.py` | Pytest suite over archetype naming — refits under four seeds and asserts the names track the cluster profiles. |
 | `test_select_k.py` | Pytest suite over the k sweep and the defensibility checks it applies to `N_CLUSTERS`. |
+| `test_validate_model.py` | Pytest suite over the quality gates — feeds the validator broken clusterings and asserts each is rejected. |
+| `conftest.py` | Session fixture that generates `processed_nba_stats.csv` if it's missing, so `pytest` works from a fresh clone. |
 | `Dockerfile` | Container build: install deps, run preprocessing at build time, serve on port 8765. |
 | `.github/workflows/ci.yml` | CI on push/PR to `main`: `ruff check` → `mypy` → `pytest`. |
 
@@ -177,6 +179,23 @@ shrunk = (attempts * rate + k * league_rate) / (attempts + k)
 
 with `k = SHOOTING_PRIOR_ATTEMPTS = 2.0` attempts per game. A player with no attempts lands exactly on the league rate (the honest "no data" value); a high-volume shooter moves by less than two percentage points.
 
+### Quality gates
+
+`validate_model.py` is a gate, not a report. It re-scores the shipped artifact and exits non-zero on any of:
+
+| Gate | Threshold | Shipped model |
+|---|---|---|
+| Silhouette | `> 0.15` | **0.1605** |
+| Seed stability (mean ARI vs. refits under 4 other seeds) | `>= 0.85` | **0.982** (worst 0.971) |
+| Smallest cluster | `>= 5%` of ranked players (19) | **75** |
+| Archetype profile match | `<= 1.5 σ` from the reference profile | **0.01 σ** |
+
+Plus required columns, and that the stored archetype names agree with the profiles they're attached to.
+
+The thresholds are set *just below* what the model achieves, so they can fail. The previous silhouette threshold was 0.1 while every k from 2 to 12 scored above it — a value no attainable clustering could miss, which made validation a tautology rather than a check. `test_validate_model.py` feeds the validator shuffled labels, collapsed clusters, a degenerate cluster and swapped archetype names, and asserts each is rejected.
+
+Seed stability is the gate that matters most here: a clustering can score a respectable silhouette and still shuffle its membership on the next seed, and unstable membership means unstable archetype names.
+
 ### Naming the archetypes
 
 K-Means cluster *indices* are an implementation detail. They depend on the random seed, on the sklearn version's initialisation, and on the data. Refitting this model with seeds 0/1/7/2024 moves the top scorer's cluster index to 3/0/0/0 while producing essentially the same partition (ARI 0.89–0.96) — so a hardcoded `{2: "Star Players"}` map would silently relabel every archetype in the dashboard, the figures, and this README the first time any of those changed.
@@ -231,7 +250,7 @@ python preprocess.py
 ```
 
 ### 2. Validate Model
-Run the validation script to check the silhouette score and cluster distribution:
+Run the validation script to check the silhouette score, seed stability, cluster sizes and archetype match:
 ```bash
 python validate_model.py
 ```

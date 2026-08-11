@@ -2,8 +2,10 @@ import logging
 import os
 import sys
 
+import numpy as np
 import pandas as pd
-from sklearn.metrics import silhouette_score
+from sklearn.cluster import KMeans
+from sklearn.metrics import adjusted_rand_score, silhouette_score
 from sklearn.preprocessing import StandardScaler
 
 import archetypes
@@ -61,12 +63,67 @@ def validate() -> bool:
         )
         ok = False
 
+    if not _validate_stability(X_scaled, ranked['Cluster']):
+        ok = False
+
+    if not _validate_cluster_sizes(ranked['Cluster']):
+        ok = False
+
     if not _validate_archetypes(ranked):
         ok = False
 
     if ok:
         logger.info("Validation Successful!")
     return ok
+
+
+def _validate_stability(X_scaled: np.ndarray, labels: pd.Series) -> bool:
+    """Refit under other seeds and check the partition is reproducible.
+
+    Silhouette alone says nothing about reproducibility: a clustering can score
+    respectably and still shuffle its membership on the next seed. Since this
+    project attaches human archetype names to clusters, an unstable partition
+    means unstable names, which is the failure the naming rework exists to
+    prevent. Measured as the mean adjusted Rand index against refits.
+    """
+    aris = []
+    for seed in config.STABILITY_SEEDS:
+        refit = KMeans(n_clusters=config.N_CLUSTERS, random_state=seed, n_init=10).fit(X_scaled)
+        aris.append(adjusted_rand_score(labels, refit.labels_))
+
+    mean_ari = float(np.mean(aris))
+    logger.info(
+        "Seed stability: mean ARI %.3f over seeds %s (worst %.3f)",
+        mean_ari, list(config.STABILITY_SEEDS), min(aris),
+    )
+    if mean_ari < config.MIN_STABILITY_ARI:
+        logger.error(
+            "Clustering is not reproducible: mean ARI %.3f < %.2f. Cluster membership "
+            "shifts between seeds, so archetype names cannot be trusted. Reconsider "
+            "N_CLUSTERS (see model_selection.csv).",
+            mean_ari, config.MIN_STABILITY_ARI,
+        )
+        return False
+    return True
+
+
+def _validate_cluster_sizes(labels: pd.Series) -> bool:
+    """Reject a clustering that produced a cluster too small to be an archetype."""
+    sizes = labels.value_counts()
+    floor = max(1, int(config.MIN_CLUSTER_FRACTION * len(labels)))
+    smallest = int(sizes.min())
+    logger.info(
+        "Smallest cluster: %d players (floor %d = %.0f%% of %d).",
+        smallest, floor, config.MIN_CLUSTER_FRACTION * 100, len(labels),
+    )
+    if smallest < floor:
+        logger.error(
+            "Cluster %s holds only %d players, under the floor of %d. That is a sampling "
+            "artifact, not an archetype.",
+            sizes.idxmin(), smallest, floor,
+        )
+        return False
+    return True
 
 
 def _validate_archetypes(df: pd.DataFrame) -> bool:

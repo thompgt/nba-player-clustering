@@ -15,9 +15,23 @@ OUTPUT_FILE: str = "processed_nba_stats.csv"
 N_CLUSTERS: int = 4
 RANDOM_STATE: int = 42
 
-# Minimum silhouette score for validate_model.py to consider the
-# clustering "reasonable" for this high-dimensional, noisy stat space.
-SILHOUETTE_THRESHOLD: float = 0.1
+# --- Quality gates ---------------------------------------------------------
+# These are set just below what the shipped model actually achieves, so they
+# can fail. The old 0.1 silhouette threshold sat below every attainable value
+# in the sweep (k=2..12 all cleared it), which made it a tautology rather than
+# a gate. Current model: silhouette 0.1605, mean seed ARI 0.98, smallest
+# cluster 75 of 399 ranked players.
+SILHOUETTE_THRESHOLD: float = 0.15
+
+# Mean adjusted Rand index between the shipped partition and refits under
+# other seeds. A clustering whose membership isn't reproducible cannot carry
+# stable human names, so this is the gate that matters most here.
+MIN_STABILITY_ARI: float = 0.85
+STABILITY_SEEDS: tuple[int, ...] = (0, 1, 7, 2024)
+
+# Smallest admissible cluster, as a fraction of the ranked player pool. A
+# handful of players is a sampling artifact, not an archetype.
+MIN_CLUSTER_FRACTION: float = 0.05
 
 # --- Eligibility -----------------------------------------------------------
 # A player who logged 6.7 minutes across 8.7 games does not have a playing
