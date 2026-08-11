@@ -6,10 +6,10 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.metrics import adjusted_rand_score, silhouette_score
-from sklearn.preprocessing import StandardScaler
 
 import archetypes
 import config
+import model_store
 
 logger = logging.getLogger(__name__)
 
@@ -43,11 +43,16 @@ def validate() -> bool:
         )
         return False
 
-    # Calculate Silhouette Score
-    X = ranked[config.CLUSTERING_FEATURES]
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    # Score with the *training* transform, loaded from disk. Re-fitting a
+    # fresh scaler here would silently score a slightly different space than
+    # the one the model was built in.
+    try:
+        model = model_store.load()
+    except (FileNotFoundError, ValueError) as exc:
+        logger.error("%s", exc)
+        return False
 
+    X_scaled = model.transform(ranked)
     score = silhouette_score(X_scaled, ranked['Cluster'])
     logger.info("Silhouette Score: %.4f", score)
 
@@ -62,6 +67,19 @@ def validate() -> bool:
             score, config.SILHOUETTE_THRESHOLD,
         )
         ok = False
+
+    # The saved model and the saved CSV must describe the same fit.
+    predicted = model.kmeans.predict(X_scaled)
+    disagreements = int((predicted != ranked['Cluster'].to_numpy()).sum())
+    if disagreements:
+        logger.error(
+            "%s and %s disagree: the saved model assigns %d of %d players to a different "
+            "cluster than the CSV records. Regenerate both with `python preprocess.py`.",
+            config.MODEL_FILE, config.OUTPUT_FILE, disagreements, len(ranked),
+        )
+        ok = False
+    else:
+        logger.info("Saved model reproduces every cluster assignment in %s.", config.OUTPUT_FILE)
 
     if not _validate_stability(X_scaled, ranked['Cluster']):
         ok = False

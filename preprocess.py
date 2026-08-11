@@ -8,6 +8,7 @@ from sklearn.preprocessing import StandardScaler
 
 import archetypes
 import config
+import model_store
 
 logger = logging.getLogger(__name__)
 
@@ -201,6 +202,18 @@ def preprocess_data(file_path: str) -> pd.DataFrame:
             "Cluster %s -> %-30s (profile distance %.2f, n=%d)",
             cid, names[cid], distances[cid], int((df['Cluster'] == cid).sum()),
         )
+
+    # Persist the fitted transform alongside the data. Everything downstream
+    # loads this instead of re-fitting its own scaler over the processed CSV.
+    model_store.save(
+        model_store.FittedModel(
+            scaler=scaler,
+            kmeans=kmeans,
+            pca=pca,
+            features=list(clustering_features),
+            archetype_names={int(cid): name for cid, name in names.items()},
+        )
+    )
 
     df.to_csv(config.OUTPUT_FILE, index=False)
     logger.info("Processed data saved to %s", config.OUTPUT_FILE)

@@ -45,6 +45,7 @@ flowchart TD
     end
 
     PROC[("processed_nba_stats.csv<br/><i>stats + Cluster + Archetype + PC1/PC2/PC3</i>")]
+    MODEL[("model.joblib<br/><i>fitted scaler + KMeans + PCA</i>")]
 
     subgraph serve["Serving"]
         APP["app.py<br/><i>Solara components + Plotly figures</i>"]
@@ -64,9 +65,12 @@ flowchart TD
     ARCH -.-> VAL
     ARCH -.-> APP
     PRE --> PROC
+    PRE --> MODEL
     PRE --> SEL
     SEL --> VAL
     PROC --> VAL
+    MODEL --> VAL
+    MODEL --> APP
     PRE --> TEST
     PROC --> APP
     APP --> BROWSER
@@ -85,7 +89,15 @@ flowchart TD
 
 `validate_model.py` is a gate, not a report — see [Quality gates](#quality-gates). `run_pipeline.py` chains preprocess → select_k → validate → pytest and stops at the first failure.
 
-`app.py` never re-fits anything. It loads `processed_nba_stats.csv` at import time and renders it — so serving is decoupled from training, and the dashboard starts instantly. The `Dockerfile` exploits this by running `preprocess.py` at *build* time, baking the processed CSV into the image so the container is ready to serve on start.
+`app.py` never re-fits anything. It loads `processed_nba_stats.csv` and `model.joblib` and renders them — so serving is decoupled from training, and the dashboard starts instantly. The `Dockerfile` exploits this by running `preprocess.py` at *build* time, baking both artifacts into the image so the container is ready to serve on start.
+
+### One fit, used everywhere
+
+The scaler, K-Means and PCA are fit **once**, in `preprocess.py`, and saved to `model.joblib` by `model_store.py`. The validator and the dashboard load that file.
+
+They used to be thrown away and independently re-fit — four `fit_transform` calls over the same data with nothing enforcing that they agreed. That is not a stylistic complaint: `preprocess.py` fits on ranked players only, so a fresh `StandardScaler` over the whole processed CSV centres the space somewhere else entirely, and the dashboard's similarity search was measuring distances in a space the model was never built in. `test_model_store.py` asserts that difference is real.
+
+The loader rejects a stale artifact rather than silently misusing it: wrong format version, or a feature list that no longer matches `config.CLUSTERING_FEATURES`. The validator additionally checks that the saved model reproduces every cluster assignment in the saved CSV.
 
 ### Module responsibilities
 
@@ -96,6 +108,8 @@ flowchart TD
 | `nba_stats.csv` | Committed raw input — per-game player stats (semicolon-delimited, `latin1`). |
 | `preprocess.py` | Load → validate schema → dedupe traded players → shrink shooting percentages → per-36 rates → eligibility filter → scale → K-Means → PCA → name archetypes → write `processed_nba_stats.csv`. |
 | `processed_nba_stats.csv` | Generated artifact consumed by both the validator and the app. Not the source of truth; regenerate it. |
+| `model_store.py` | Saves and loads the fitted scaler/K-Means/PCA, with staleness checks on the format version and feature list. |
+| `model.joblib` | Generated artifact: the one fitted transform, loaded by the validator and the dashboard. |
 | `validate_model.py` | Quality gate on the generated artifact: required columns, silhouette, seed stability, minimum cluster size, and archetype-profile match. Exit code drives CI/pipeline. |
 | `run_pipeline.py` | Orchestrator — runs preprocess, validate, and tests in order, aborting on the first non-zero exit. |
 | `app.py` | Solara dashboard: sidebar player/compare selectors, KPI strip, Plotly PCA scatter, radar chart, similarity search, cluster explorer, filterable player table with CSV export. |
@@ -106,6 +120,7 @@ flowchart TD
 | `test_archetypes.py` | Pytest suite over archetype naming — refits under four seeds and asserts the names track the cluster profiles. |
 | `test_select_k.py` | Pytest suite over the k sweep and the defensibility checks it applies to `N_CLUSTERS`. |
 | `test_validate_model.py` | Pytest suite over the quality gates — feeds the validator broken clusterings and asserts each is rejected. |
+| `test_model_store.py` | Pytest suite over the persisted model — round-tripping, assignment reproduction, and staleness rejection. |
 | `conftest.py` | Session fixture that generates `processed_nba_stats.csv` if it's missing, so `pytest` works from a fresh clone. |
 | `Dockerfile` | Container build: install deps, run preprocessing at build time, serve on port 8765. |
 | `.github/workflows/ci.yml` | CI on push/PR to `main`: `ruff check` → `mypy` → `pytest`. |

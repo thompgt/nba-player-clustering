@@ -12,6 +12,9 @@ venv/
 processed_nba_stats.csv
 kaggle.json
 
+# Fitted model artifact (regenerate with `python preprocess.py`)
+model.joblib
+
 # Build
 dist/
 build/

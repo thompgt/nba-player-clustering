@@ -8,6 +8,10 @@ of sync (e.g. app.py's cluster labels vs. preprocess.py's cluster count).
 INPUT_FILE: str = "nba_stats.csv"
 OUTPUT_FILE: str = "processed_nba_stats.csv"
 
+# The fitted scaler/K-Means/PCA, written by preprocess.py and loaded by
+# validate_model.py and app.py so nothing re-derives the training transform.
+MODEL_FILE: str = "model.joblib"
+
 # Re-derived by select_k.py, whose table is committed as model_selection.csv.
 # Within the interpretable range k=4 is the silhouette local maximum (0.1605)
 # and by far the most stable (mean ARI 0.98 across five seeds, smallest cluster

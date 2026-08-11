@@ -5,10 +5,10 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import solara
-from sklearn.preprocessing import StandardScaler
 
 import archetypes
 import config
+import model_store
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +38,11 @@ ARCHETYPE_COLOR_MAP[archetypes.UNRANKED] = archetypes.UNRANKED_COLOR
 TEAMS = sorted(df["Tm"].unique().tolist())
 
 # Standardized feature matrix, reused to find statistically similar players.
-_scaler = StandardScaler()
-_feature_matrix = _scaler.fit_transform(df[config.CLUSTERING_FEATURES])
+# Built with the *training* scaler loaded from disk rather than a fresh fit
+# over the processed CSV: similarity search must measure distance in the same
+# space the model was built in, and nothing else was enforcing that.
+_model = model_store.load()
+_feature_matrix = _model.transform(df)
 
 
 def find_similar_players(player_name: str, n: int = 5) -> pd.DataFrame:

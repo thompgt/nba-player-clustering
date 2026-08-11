@@ -15,7 +15,7 @@ import config
 
 @pytest.fixture(scope="session", autouse=True)
 def ensure_processed_data():
-    if not os.path.exists(config.OUTPUT_FILE):
+    if not (os.path.exists(config.OUTPUT_FILE) and os.path.exists(config.MODEL_FILE)):
         from preprocess import preprocess_data
 
         preprocess_data(config.INPUT_FILE)
