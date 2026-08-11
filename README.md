@@ -17,8 +17,11 @@ An interactive web application built with [Solara](https://solara.dev/) and [Plo
 
 ## Features
 - **Player Archetype Clustering**: Uses K-Means to group players based on normalized stats.
-- **Interactive PCA Visualization**: Explore the player space in 2D.
-- **Radar Charts**: Compare individual player profiles against cluster averages.
+- **Interactive PCA Visualization**: Explore the player space in 2D, with the selected player (and an optional comparison player) starred.
+- **Radar Charts**: Compare individual player profiles against each other and against the cluster average.
+- **Similarity Search**: Find the players closest to the selected one in scaled stat space.
+- **Cluster Explorer**: Per-archetype descriptions, colors, and average stat lines.
+- **Player Explorer**: Name search, team filter, and CSV download of the filtered table.
 - **Reactive Dashboard**: Real-time player selection using Solara.
 
 ## Architecture
@@ -85,7 +88,7 @@ flowchart TD
 | `processed_nba_stats.csv` | Generated artifact consumed by both the validator and the app. Not the source of truth; regenerate it. |
 | `validate_model.py` | Quality gate on the generated artifact: required columns present, silhouette score above threshold. Exit code drives CI/pipeline. |
 | `run_pipeline.py` | Orchestrator — runs preprocess, validate, and tests in order, aborting on the first non-zero exit. |
-| `app.py` | Solara dashboard: sidebar player selector, Plotly PCA scatter, radar chart vs. cluster average, cluster/player tables. |
+| `app.py` | Solara dashboard: sidebar player/compare selectors, KPI strip, Plotly PCA scatter, radar chart, similarity search, cluster explorer, filterable player table with CSV export. |
 | `make_figures.py` | Regenerates the analytical figures in `docs/images/` from the processed data. |
 | `test_preprocess.py` | Pytest suite over `preprocess_data` — output shape, no NaNs, cluster count, `TOT` collapsing, and error handling. |
 | `Dockerfile` | Container build: install deps, run preprocessing at build time, serve on port 8765. |
