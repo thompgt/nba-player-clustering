@@ -66,6 +66,56 @@ def test_multi_team_players_collapse_to_tot_row(processed):
         assert rows.iloc[0]["Tm"] == "TOT"
 
 
+def test_zero_attempt_shooters_are_not_treated_as_the_worst_in_the_league(processed):
+    """The source stores 0.0, not NaN, for a player who never took the shot."""
+    df, _ = processed
+    for pct, (_, attempts) in config.SHOOTING_RATES.items():
+        never_attempted = df[df[attempts] == 0]
+        assert len(never_attempted) > 0, f"fixture data should have players with no {attempts}"
+        # They land on the league rate, not on 0 -- and so are never the minimum.
+        assert (never_attempted[pct] > 0).all()
+        assert never_attempted[pct].nunique() == 1
+        assert never_attempted[pct].iloc[0] > df[pct].min()
+
+
+def test_shooting_percentages_are_shrunk_toward_the_league_rate(processed):
+    """A tiny sample must not produce a 0% or 100% shooter."""
+    df, _ = processed
+    raw = pd.read_csv(INPUT_FILE, sep=";", encoding="latin1")
+    for pct in config.SHOOTING_RATES:
+        assert df[pct].min() > raw[pct].min() or raw[pct].min() > 0
+        assert df[pct].max() < 1.0
+
+
+def test_high_volume_shooters_are_barely_moved(processed):
+    """Shrinkage is proportional to sample size, so regulars keep their rate."""
+    df, _ = processed
+    raw = pd.read_csv(INPUT_FILE, sep=";", encoding="latin1")
+    merged = df[["Player", "Tm", "FGA", "FG%"]].merge(
+        raw[["Player", "Tm", "FG%"]], on=["Player", "Tm"], suffixes=("_shrunk", "_raw")
+    )
+    high_volume = merged[merged["FGA"] > 15]
+    assert len(high_volume) > 0
+    shift = (high_volume["FG%_shrunk"] - high_volume["FG%_raw"]).abs()
+    # k=2 prior attempts against >15 attempts/game moves a rate by <2 points.
+    assert shift.max() < 0.02
+
+
+def test_preprocess_does_not_chain_assign_on_a_view(tmp_path):
+    """The boolean filter is copied, so later column writes aren't on a view."""
+    repo_root = os.path.dirname(os.path.abspath(__file__))
+    shutil.copy(os.path.join(repo_root, INPUT_FILE), tmp_path / INPUT_FILE)
+
+    cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        # "raise" turns what would be a SettingWithCopyWarning into an error.
+        with pd.option_context("mode.chained_assignment", "raise"):
+            preprocess_data(INPUT_FILE)
+    finally:
+        os.chdir(cwd)
+
+
 def test_missing_required_column_raises_clear_error(tmp_path):
     raw = pd.read_csv(INPUT_FILE, sep=";", encoding="latin1")
     bad_file = tmp_path / "missing_column.csv"

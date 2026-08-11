@@ -10,9 +10,60 @@ import config
 
 logger = logging.getLogger(__name__)
 
+_SHOOTING_COLUMNS = [c for pair in config.SHOOTING_RATES.values() for c in pair]
+
 REQUIRED_COLUMNS = sorted(
-    set(['Player', 'Tm'] + config.CLUSTERING_FEATURES + archetypes.SIGNATURE_FEATURES)
+    set(
+        ['Player', 'Tm', 'G']
+        + config.CLUSTERING_FEATURES
+        + archetypes.SIGNATURE_FEATURES
+        + _SHOOTING_COLUMNS
+    )
 )
+
+
+def shrink_shooting_percentages(df: pd.DataFrame) -> pd.DataFrame:
+    """Replace raw shooting percentages with league-shrunk estimates.
+
+    Basketball-Reference stores ``0.0``, not NaN, for a player who never
+    attempted a given shot type -- 46 players in this dataset have
+    ``3PA == 0`` and ``3P% == 0.0``. Standardised, that is the strongest
+    possible negative signal: k-means reads "took no threes" as "worst
+    three-point shooter alive". The mirror-image problem is just as bad: one
+    made three in one attempt reads as a perfect shooter.
+
+    Both are small-sample artifacts, so each percentage is shrunk toward the
+    league rate in proportion to how many attempts back it::
+
+        shrunk = (attempts * rate + k * league_rate) / (attempts + k)
+
+    A player with zero attempts lands exactly on the league rate ("no data"),
+    and a player with a full season of attempts is left essentially untouched.
+    """
+    df = df.copy()
+    for pct, (makes, attempts) in config.SHOOTING_RATES.items():
+        if makes not in df.columns or attempts not in df.columns:
+            logger.warning(
+                "Cannot shrink %s: missing %s/%s. Leaving the raw column in place.",
+                pct, makes, attempts,
+            )
+            continue
+
+        # Games-weighted league rate: season totals, not a mean of per-game rates.
+        games = df['G'].astype(float)
+        league_rate = float((df[makes] * games).sum() / (df[attempts] * games).sum())
+
+        att = df[attempts].astype(float).fillna(0.0)
+        observed = df[pct].astype(float).fillna(0.0)
+        k = config.SHOOTING_PRIOR_ATTEMPTS
+        df[pct] = (att * observed + k * league_rate) / (att + k)
+
+        zero_attempt = int((att == 0).sum())
+        logger.info(
+            "%s: league rate %.3f, shrunk with k=%.1f attempts (%d players had zero attempts)",
+            pct, league_rate, k, zero_attempt,
+        )
+    return df
 
 
 def preprocess_data(file_path: str) -> pd.DataFrame:
@@ -31,13 +82,16 @@ def preprocess_data(file_path: str) -> pd.DataFrame:
     # Handle duplicates: Keep 'TOT' for players who played for multiple teams
     # Drop rows where Tm != 'TOT' for players who have a 'TOT' row
     players_with_tot = df[df['Tm'] == 'TOT']['Player'].unique()
-    df = df[~((df['Player'].isin(players_with_tot)) & (df['Tm'] != 'TOT'))]
+    # .copy() so the later column assignments write to their own frame rather
+    # than a view of the original (SettingWithCopyWarning).
+    df = df[~((df['Player'].isin(players_with_tot)) & (df['Tm'] != 'TOT'))].copy()
 
-    # Percentage columns (FG%/3P%/FT%) are NaN exactly when the player had
-    # zero attempts of that shot type, so 0 is the correct value there. Fill
-    # only the clustering feature columns rather than the whole dataframe,
+    df = shrink_shooting_percentages(df)
+
+    # Fill only the clustering feature columns rather than the whole dataframe,
     # so unrelated columns (e.g. Pos) aren't silently zeroed if they ever
-    # contain gaps.
+    # contain gaps. Counting stats are genuinely 0 when absent; the percentage
+    # columns have already been handled above.
     df[config.CLUSTERING_FEATURES] = df[config.CLUSTERING_FEATURES].fillna(0)
 
     clustering_features = config.CLUSTERING_FEATURES
