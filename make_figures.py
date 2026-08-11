@@ -13,12 +13,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.colors import LinearSegmentedColormap
-from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
-from sklearn.preprocessing import StandardScaler
 
 import archetypes
 import config
+import select_k
 
 plt.switch_backend("Agg")
 
@@ -60,10 +58,8 @@ plt.rcParams.update(
 )
 
 
-def load() -> tuple[pd.DataFrame, np.ndarray]:
-    df = pd.read_csv(config.OUTPUT_FILE)
-    X = StandardScaler().fit_transform(df[config.CLUSTERING_FEATURES])
-    return df, X
+def load() -> pd.DataFrame:
+    return pd.read_csv(config.OUTPUT_FILE)
 
 
 def fig_pca_facets(df: pd.DataFrame) -> str:
@@ -99,14 +95,21 @@ def fig_pca_facets(df: pd.DataFrame) -> str:
     return save(fig, "pca_clusters.png")
 
 
-def fig_model_selection(X: np.ndarray) -> str:
-    """Elbow + silhouette sweep over k, on the same scaled feature matrix."""
-    ks = list(range(2, 13))
-    inertia, sil = [], []
-    for k in ks:
-        km = KMeans(n_clusters=k, random_state=config.RANDOM_STATE, n_init=10).fit(X)
-        inertia.append(km.inertia_)
-        sil.append(silhouette_score(X, km.labels_))
+def fig_model_selection() -> str:
+    """Elbow + silhouette curves, plotted from the select_k.py artifact.
+
+    The sweep deliberately does *not* live here: a figure script only runs when
+    someone regenerates PNGs, so the evidence for k would never be rechecked.
+    select_k.py owns it and writes model_selection.csv; this just draws it.
+    """
+    if not os.path.exists(select_k.OUTPUT_FILE):
+        raise FileNotFoundError(
+            f"{select_k.OUTPUT_FILE} not found. Run `python select_k.py` first."
+        )
+    table = pd.read_csv(select_k.OUTPUT_FILE).set_index("k")
+    ks = table.index.tolist()
+    inertia = table["inertia"].tolist()
+    sil = table["silhouette"].tolist()
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
     chosen = config.N_CLUSTERS
@@ -194,9 +197,9 @@ def save(fig: plt.Figure, name: str) -> str:
 
 
 def main() -> None:
-    df, X = load()
+    df = load()
     fig_pca_facets(df)
-    fig_model_selection(X)
+    fig_model_selection()
     fig_cluster_profiles(df)
 
 

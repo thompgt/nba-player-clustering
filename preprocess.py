@@ -1,5 +1,6 @@
 import logging
 
+import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
@@ -66,7 +67,12 @@ def shrink_shooting_percentages(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def preprocess_data(file_path: str) -> pd.DataFrame:
+def load_players(file_path: str) -> pd.DataFrame:
+    """Read the raw CSV and apply every step that precedes model fitting.
+
+    Shared by ``preprocess_data`` and ``select_k.py`` so the k-sweep is run
+    over exactly the matrix the shipped model is fit on.
+    """
     # Load data with semicolon separator
     try:
         df = pd.read_csv(file_path, sep=';', encoding='latin1')
@@ -93,13 +99,19 @@ def preprocess_data(file_path: str) -> pd.DataFrame:
     # contain gaps. Counting stats are genuinely 0 when absent; the percentage
     # columns have already been handled above.
     df[config.CLUSTERING_FEATURES] = df[config.CLUSTERING_FEATURES].fillna(0)
+    return df
 
-    clustering_features = config.CLUSTERING_FEATURES
 
-    X = df[clustering_features]
-
+def build_feature_matrix(df: pd.DataFrame) -> tuple[np.ndarray, StandardScaler]:
+    """Standardise the clustering features. One definition, used everywhere."""
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    return scaler.fit_transform(df[config.CLUSTERING_FEATURES]), scaler
+
+
+def preprocess_data(file_path: str) -> pd.DataFrame:
+    df = load_players(file_path)
+    clustering_features = config.CLUSTERING_FEATURES
+    X_scaled, scaler = build_feature_matrix(df)
 
     # K-Means clustering
     kmeans = KMeans(n_clusters=config.N_CLUSTERS, random_state=config.RANDOM_STATE, n_init=10)

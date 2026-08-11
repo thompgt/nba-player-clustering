@@ -18,11 +18,16 @@ def main() -> None:
     # 1. Preprocess
     run_command([sys.executable, "preprocess.py"])
 
-    # 2. Validate
+    # 2. Re-derive k and write model_selection.csv. Advisory by default: it
+    #    warns when the shipped N_CLUSTERS is no longer defensible rather than
+    #    breaking the build, since choosing k is an editorial decision.
+    run_command([sys.executable, "select_k.py"])
+
+    # 3. Validate
     run_command([sys.executable, "validate_model.py"])
 
-    # 3. Test
-    run_command([sys.executable, "-m", "pytest", "test_preprocess.py"])
+    # 4. Test
+    run_command([sys.executable, "-m", "pytest"])
 
     logger.info("Pipeline completed successfully!")
 
