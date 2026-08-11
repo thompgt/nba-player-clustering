@@ -1,5 +1,6 @@
 pandas==2.3.2
 numpy==2.3.3
+scipy==1.16.3
 scikit-learn==1.6.1
 plotly==6.5.0
 solara==1.57.4

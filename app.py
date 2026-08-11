@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 import solara
 from sklearn.preprocessing import StandardScaler
 
+import archetypes
 import config
 
 logger = logging.getLogger(__name__)
@@ -21,11 +22,17 @@ except FileNotFoundError:
     )
     raise
 
-df["Cluster Name"] = df["Cluster"].map(config.CLUSTER_NAMES)
+if "Archetype" not in df.columns:
+    raise ValueError(
+        f"{config.OUTPUT_FILE} has no 'Archetype' column. Regenerate it with "
+        "`python preprocess.py` (archetype names are assigned during preprocessing)."
+    )
 
 RADAR_FEATURES = config.RADAR_FEATURES
-CLUSTER_ORDER = [config.CLUSTER_NAMES[i] for i in sorted(config.CLUSTER_NAMES)]
-CLUSTER_COLOR_MAP = {config.CLUSTER_NAMES[i]: config.CLUSTER_COLORS[i] for i in config.CLUSTER_NAMES}
+# Archetype order and color come from archetypes.py, so charts stay consistent
+# with each other and survive a refit that renumbers the cluster indices.
+ARCHETYPE_ORDER = [a.name for a in archetypes.ARCHETYPES]
+ARCHETYPE_COLOR_MAP = {a.name: a.color for a in archetypes.ARCHETYPES}
 TEAMS = sorted(df["Tm"].unique().tolist())
 
 # Standardized feature matrix, reused to find statistically similar players.
@@ -38,7 +45,7 @@ def find_similar_players(player_name: str, n: int = 5) -> pd.DataFrame:
     distances = np.linalg.norm(_feature_matrix - _feature_matrix[idx], axis=1)
     order = np.argsort(distances)
     order = order[order != idx][:n]
-    result = df.iloc[order][["Player", "Tm", "Cluster Name"]].copy()
+    result = df.iloc[order][["Player", "Tm", "Archetype"]].copy()
     result["Similarity"] = (100 / (1 + distances[order])).round(1)
     return result.reset_index(drop=True)
 
@@ -59,9 +66,8 @@ CUSTOM_CSS = """
 
 
 @solara.component
-def ClusterBadge(cluster_id: int):
-    color = config.CLUSTER_COLORS[cluster_id]
-    name = config.CLUSTER_NAMES[cluster_id]
+def ArchetypeBadge(name: str):
+    color = ARCHETYPE_COLOR_MAP[name]
     solara.HTML(
         tag="span",
         unsafe_innerHTML=name,
@@ -92,7 +98,7 @@ def Page():
     name_search, set_name_search = solara.use_state("")
 
     player_row = df[df["Player"] == selected_player].iloc[0]
-    cluster_id = int(player_row["Cluster"])
+    archetype = str(player_row["Archetype"])
 
     with solara.Sidebar():
         solara.Markdown("## Player")
@@ -111,7 +117,7 @@ def Page():
 
         solara.Markdown(f"### {player_row['Player']}")
         solara.Markdown(f"**Team:** {player_row['Tm']}")
-        ClusterBadge(cluster_id)
+        ArchetypeBadge(archetype)
 
         solara.Markdown("&nbsp;")
         with solara.Row(gap="4px"):
@@ -132,9 +138,9 @@ def Page():
                 df,
                 x="PC1",
                 y="PC2",
-                color="Cluster Name",
-                category_orders={"Cluster Name": CLUSTER_ORDER},
-                color_discrete_map=CLUSTER_COLOR_MAP,
+                color="Archetype",
+                category_orders={"Archetype": ARCHETYPE_ORDER},
+                color_discrete_map=ARCHETYPE_COLOR_MAP,
                 hover_data=["Player", "PTS", "TRB", "AST"],
                 title="NBA Player Archetypes (PCA)",
                 opacity=0.65,
@@ -164,7 +170,7 @@ def Page():
             def normalized(name: str) -> pd.Series:
                 return df[df["Player"] == name][RADAR_FEATURES].iloc[0] / max_stats
 
-            cluster_avg = df[df["Cluster"] == cluster_id][RADAR_FEATURES].mean() / max_stats
+            cluster_avg = df[df["Archetype"] == archetype][RADAR_FEATURES].mean() / max_stats
 
             fig_radar = go.Figure()
             fig_radar.add_trace(
@@ -191,7 +197,7 @@ def Page():
                     r=cluster_avg.values,
                     theta=RADAR_FEATURES,
                     fill="toself",
-                    name=f"{config.CLUSTER_NAMES[cluster_id]} Average",
+                    name=f"{archetype} Average",
                     line_color="rgba(150, 150, 150, 0.7)",
                 )
             )
@@ -209,14 +215,14 @@ def Page():
         solara.Markdown(f"Players most statistically similar to **{selected_player}**, by scaled per-game stats.")
         solara.DataFrame(find_similar_players(selected_player))
 
-    with solara.Card("Cluster Explorer"):
-        for cid in sorted(config.CLUSTER_NAMES):
-            cluster_players = df[df["Cluster"] == cid]
-            with solara.Details(summary=f"{config.CLUSTER_NAMES[cid]}  ({len(cluster_players)} players)"):
+    with solara.Card("Archetype Explorer"):
+        for arch in archetypes.ARCHETYPES:
+            members = df[df["Archetype"] == arch.name]
+            with solara.Details(summary=f"{arch.name}  ({len(members)} players)"):
                 with solara.Column(gap="8px"):
-                    ClusterBadge(cid)
-                    solara.Markdown(config.CLUSTER_DESCRIPTIONS[cid])
-                    avg = cluster_players[RADAR_FEATURES].mean().round(1)
+                    ArchetypeBadge(arch.name)
+                    solara.Markdown(arch.description)
+                    avg = members[RADAR_FEATURES].mean().round(1)
                     solara.Markdown(
                         " · ".join(f"**{stat}:** {avg[stat]}" for stat in RADAR_FEATURES)
                     )
@@ -238,7 +244,7 @@ def Page():
             filtered = filtered[filtered["Tm"].isin(team_filter)]
 
         solara.Markdown(f"{len(filtered)} of {len(df)} players")
-        solara.DataFrame(filtered[["Player", "Tm", "PTS", "TRB", "AST", "STL", "BLK", "Cluster Name"]])
+        solara.DataFrame(filtered[["Player", "Tm", "PTS", "TRB", "AST", "STL", "BLK", "Archetype"]])
         solara.FileDownload(
             lambda: filtered.to_csv(index=False),
             filename="nba_player_clusters_filtered.csv",

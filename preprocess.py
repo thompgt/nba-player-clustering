@@ -5,11 +5,14 @@ from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
+import archetypes
 import config
 
 logger = logging.getLogger(__name__)
 
-REQUIRED_COLUMNS = ['Player', 'Tm'] + config.CLUSTERING_FEATURES
+REQUIRED_COLUMNS = sorted(
+    set(['Player', 'Tm'] + config.CLUSTERING_FEATURES + archetypes.SIGNATURE_FEATURES)
+)
 
 
 def preprocess_data(file_path: str) -> pd.DataFrame:
@@ -55,13 +58,22 @@ def preprocess_data(file_path: str) -> pd.DataFrame:
     df['PC2'] = pca_results[:, 1]
     df['PC3'] = pca_results[:, 2]
     
-    # Map clusters to names (Generic for now, can be improved)
-    # 0: Defensive Bigs, 1: Scoring Guards, etc.
-    # We can analyze cluster centers to give better names.
-    
     cluster_centers = scaler.inverse_transform(kmeans.cluster_centers_)
     centers_df = pd.DataFrame(cluster_centers, columns=clustering_features)
     logger.info("Cluster centers:\n%s", centers_df)
+
+    # Attach archetype names by matching each cluster's statistical profile to
+    # the reference profiles in archetypes.py. Cluster *indices* are
+    # seed-dependent, so the name is derived from the centroid's shape, never
+    # from its index. The distances are logged so a drifting cluster is
+    # visible here as well as in validate_model.py, which gates on them.
+    names, distances = archetypes.assign_archetypes(df, df['Cluster'])
+    df['Archetype'] = df['Cluster'].map(names)
+    for cid in sorted(names):
+        logger.info(
+            "Cluster %s -> %-30s (profile distance %.2f, n=%d)",
+            cid, names[cid], distances[cid], int((df['Cluster'] == cid).sum()),
+        )
 
     df.to_csv(config.OUTPUT_FILE, index=False)
     logger.info("Processed data saved to %s", config.OUTPUT_FILE)

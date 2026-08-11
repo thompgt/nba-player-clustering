@@ -17,6 +17,7 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
 
+import archetypes
 import config
 
 plt.switch_backend("Agg")
@@ -68,14 +69,14 @@ def load() -> tuple[pd.DataFrame, np.ndarray]:
 def fig_pca_facets(df: pd.DataFrame) -> str:
     """One small multiple per cluster: the chosen cluster against all players."""
     fig, axes = plt.subplots(2, 3, figsize=(11, 6.6), sharex=True, sharey=True)
-    for cid, ax in zip(sorted(config.CLUSTER_NAMES), axes.ravel()):
-        sub = df[df["Cluster"] == cid]
+    for arch, ax in zip(archetypes.ARCHETYPES, axes.ravel()):
+        sub = df[df["Archetype"] == arch.name]
         ax.scatter(df["PC1"], df["PC2"], s=9, c=CONTEXT, linewidths=0, zorder=1)
         ax.scatter(
             sub["PC1"], sub["PC2"], s=16, c=ACCENT, linewidths=0.4,
             edgecolors=SURFACE, zorder=2,
         )
-        ax.set_title(f"{config.CLUSTER_NAMES[cid]}  ({len(sub)} players)", loc="left", color=INK)
+        ax.set_title(f"{arch.name}  ({len(sub)} players)", loc="left", color=INK)
         ax.grid(True, linewidth=0.6, zorder=0)
         ax.set_axisbelow(True)
         # Label the most productive player in the cluster as an anchor.
@@ -145,9 +146,10 @@ def fig_cluster_profiles(df: pd.DataFrame) -> str:
     """Heatmap of cluster mean per feature, in standard deviations from league mean."""
     feats = config.CLUSTERING_FEATURES
     z = (df[feats] - df[feats].mean()) / df[feats].std()
-    z["Cluster"] = df["Cluster"]
-    mat = z.groupby("Cluster")[feats].mean()
-    labels = [f"{config.CLUSTER_NAMES[c]}  (n={int((df['Cluster'] == c).sum())})" for c in mat.index]
+    z["Archetype"] = df["Archetype"]
+    order = [a.name for a in archetypes.ARCHETYPES]
+    mat = z.groupby("Archetype")[feats].mean().reindex(order)
+    labels = [f"{name}  (n={int((df['Archetype'] == name).sum())})" for name in mat.index]
 
     lim = float(np.abs(mat.to_numpy()).max())
     fig, ax = plt.subplots(figsize=(10, 4.4))
