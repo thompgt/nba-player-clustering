@@ -16,6 +16,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
 
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
@@ -26,5 +28,26 @@ jobs:
       - name: Type check with mypy
         run: mypy .
 
+      # The pipeline itself, not just the tests. Without these steps the
+      # quality gates were decorative: validate_model.py and run_pipeline.py
+      # never executed in CI, so a clustering could regress or degenerate and
+      # nothing would notice.
+      - name: Build the model
+        run: python preprocess.py
+
+      - name: Check the cluster count is still defensible
+        run: python select_k.py --check
+
+      - name: Validate the model
+        run: python validate_model.py
+
       - name: Run tests
         run: pytest -v
+
+      # Guards the documented regeneration path for the README figures.
+      - name: Regenerate figures
+        run: python make_figures.py
+
+      - name: Report figure/artifact drift
+        if: always()
+        run: git --no-pager diff --stat -- docs/images model_selection.csv
