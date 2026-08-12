@@ -31,7 +31,9 @@ An interactive web application built with [Solara](https://solara.dev/) and [Plo
 ```mermaid
 flowchart TD
     subgraph src["Source data (committed to the repo)"]
+        FETCH["fetch_data.py<br/><i>cached fetch + retry/backoff,<br/>schema normalisation</i>"]
         RAW["nba_stats.csv<br/><i>semicolon-delimited, latin1</i>"]
+        FETCH -.-> RAW
     end
 
     subgraph cfg["Configuration"]
@@ -110,6 +112,7 @@ The loader rejects a stale artifact rather than silently misusing it: wrong form
 |------|----------------|
 | `config.py` | Shared configuration: input/output paths, `N_CLUSTERS`, `RANDOM_STATE`, eligibility floors, silhouette threshold, clustering/radar feature lists. |
 | `archetypes.py` | Named archetypes, their descriptions, colors and reference statistical profiles, plus the profile-matching that assigns names to clusters. |
+| `fetch_data.py` | Ingestion: fetches the season's per-game table with caching and retry/backoff, normalizes the schema, writes `nba_stats.csv`. |
 | `nba_stats.csv` | Committed raw input — per-game player stats (semicolon-delimited, `latin1`). |
 | `preprocess.py` | Load → validate schema → dedupe traded players → shrink shooting percentages → per-36 rates → eligibility filter → scale → K-Means → PCA → name archetypes → write `processed_nba_stats.csv`. |
 | `processed_nba_stats.csv` | Generated artifact consumed by both the validator and the app. Not the source of truth; regenerate it. |
@@ -127,6 +130,7 @@ The loader rejects a stale artifact rather than silently misusing it: wrong form
 | `test_validate_model.py` | Pytest suite over the quality gates — feeds the validator broken clusterings and asserts each is rejected. |
 | `test_model_store.py` | Pytest suite over the persisted model — round-tripping, assignment reproduction, and staleness rejection. |
 | `test_app.py` | Smoke tests over the dashboard module — import, cached loading, similarity search, and positional player lookup. |
+| `test_fetch_data.py` | Pytest suite over ingestion — schema normalization, retry/backoff, and cache reuse. Makes no network requests. |
 | `conftest.py` | Session fixture that generates `processed_nba_stats.csv` if it's missing, so `pytest` works from a fresh clone. |
 | `Dockerfile` | Container build: install deps, build **and validate** the model at build time, drop to a non-root user, serve on port 8765. |
 | `.github/workflows/ci.yml` | CI on push/PR to `main`: `ruff check` → `mypy .` (every module, `app.py` included) → build the model → `select_k.py --check` → `validate_model.py` → `pytest` → regenerate figures. |
@@ -337,7 +341,22 @@ The stats are committed to this repo so the pipeline runs end-to-end from a fres
 
 The file is semicolon-delimited (`;`) with `latin1` encoding and includes, per player-season row: identity/context columns (`Rk`, `Player`, `Pos`, `Age`, `Tm`, `G`, `GS`, `MP`), traditional counting stats (`PTS`, `TRB`, `AST`, `STL`, `BLK`, `ORB`, `DRB`, `TOV`, `PF`), and shooting stats with makes/attempts/percentages (`FG`/`FGA`/`FG%`, `3P`/`3PA`/`3P%`, `2P`/`2PA`/`2P%`, `eFG%`, `FT`/`FTA`/`FT%`). Players traded mid-season have a `Tm == 'TOT'` row aggregating their full-season totals, which `preprocess.py` uses in preference to the per-team split rows.
 
-To refresh with a newer season, replace `nba_stats.csv` with an equivalent export in the same format and re-run `python preprocess.py`.
+### Refreshing the data
+
+There is a script, so refreshing isn't a manual scrape:
+
+```bash
+pip install -r requirements-dev.txt   # fetching needs lxml
+python fetch_data.py                  # the configured season
+python fetch_data.py --season 2025    # a different one (end year)
+python fetch_data.py --refresh        # ignore the cached response
+```
+
+It caches the raw response under `.cache/` and reuses it, so re-running is free and doesn't hammer the source; retries transient failures (429, 5xx, connection resets) with exponential backoff and jitter, and gives up loudly rather than writing a truncated file; and normalizes the column names the source has changed over the years (`Team` → `Tm`, `2TM`/`3TM` → `TOT`) before writing the exact dialect `preprocess.py` reads — semicolon-separated, `latin1`. If a required column is missing it refuses to overwrite the CSV.
+
+Parsing is separated from fetching, so `test_fetch_data.py` exercises the schema handling — the part that actually breaks when the source changes — without making a single request.
+
+After fetching a different season, update `config.SEASON` and `config.SEASON_END_YEAR` (the script warns if they disagree) and re-run `python run_pipeline.py`. Expect the archetype reference profiles in `archetypes.py` to need review: the validator will tell you if a cluster has drifted past tolerance.
 
 ## License
 This project is licensed under the [MIT License](LICENSE).

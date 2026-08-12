@@ -9,6 +9,7 @@ venv/
 .ipynb_checkpoints/
 processed_nba_stats.csv
 model.joblib
+.cache/
 .mypy_cache/
 .ruff_cache/
 docs/

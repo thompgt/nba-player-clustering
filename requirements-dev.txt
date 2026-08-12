@@ -5,3 +5,7 @@ mypy==2.2.0
 # Needed by make_figures.py, which is type-checked and linted in CI. The app
 # itself doesn't need it, so it stays out of requirements.txt.
 matplotlib==3.10.6
+
+# HTML parsing backend for pandas.read_html, used by fetch_data.py. Ingestion
+# is a maintenance task, not something the served app does.
+lxml==6.0.2

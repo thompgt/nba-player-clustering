@@ -15,6 +15,9 @@ kaggle.json
 # Fitted model artifact (regenerate with `python preprocess.py`)
 model.joblib
 
+# Cached raw responses from fetch_data.py
+.cache/
+
 # Build
 dist/
 build/
