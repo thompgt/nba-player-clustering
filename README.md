@@ -13,9 +13,9 @@ An interactive web application built with [Solara](https://solara.dev/) and [Plo
 ![Silhouette Analysis](https://img.shields.io/badge/Silhouette%20Analysis-B23A48?style=for-the-badge)
 ![Plotly](https://img.shields.io/badge/Plotly-3F4F75?style=for-the-badge&logo=plotly&logoColor=white)
 
-![The Solara dashboard running locally: PCA scatter colored by cluster, a radar chart comparing the selected player to their cluster average, and the cluster/player data tables below.](docs/images/dashboard.png)
+Run it with `solara run app.py` and open `http://localhost:8765` — pick a player in the sidebar and the PCA view, radar chart, similarity search and tables update reactively. The analytical figures further down are generated from the repo's own pipeline output, so they are always current; see [Model & clusters](#model--clusters).
 
-*The dashboard at `http://localhost:8765` — pick a player in the sidebar and the PCA view, radar chart, and tables update reactively.*
+> **Note:** the dashboard screenshot that used to sit here was removed rather than left in place — it showed the previous six-cluster, volume-based model and a UI several revisions old. It needs re-taking against the current app.
 
 ## Features
 - **Player Archetype Clustering**: Uses K-Means over per-36-minute rate stats to group players by *style* rather than by playing time.
