@@ -2,6 +2,8 @@
 
 An interactive web application built with [Solara](https://solara.dev/) and [Plotly](https://plotly.com/) to cluster NBA players into four playing-style archetypes — **Primary Creators, Interior Bigs, Floor Spacers, Slashing Wings** — and visualize their profiles using radar charts.
 
+**Season: 2023-24.** Per-game stats from [Basketball-Reference](https://www.basketball-reference.com/leagues/NBA_2024_per_game.html), committed as `nba_stats.csv`.
+
 ## Tech Stack
 
 ![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
@@ -321,7 +323,17 @@ Then open http://localhost:8765.
 The build **gates the model it bakes in**: `preprocess.py`, `select_k.py --check` and `validate_model.py` run chained in a single layer, so a build cannot produce an image carrying a degenerate clustering. The container runs as the unprivileged `appuser` (uid 10001), not root.
 
 ## Data Source
-The project uses NBA player per-game stats sourced from [Basketball-Reference](https://www.basketball-reference.com/), committed to this repo as `nba_stats.csv` so the pipeline runs end-to-end from a fresh clone with no manual data-fetch step.
+
+| | |
+|---|---|
+| **Season** | 2023-24 (`config.SEASON`) |
+| **Source** | [Basketball-Reference — NBA 2023-24 per game](https://www.basketball-reference.com/leagues/NBA_2024_per_game.html) |
+| **File** | `nba_stats.csv`, committed |
+| **Rows** | 735 raw → 572 after collapsing traded players → 399 clustered |
+
+The season used to be recorded nowhere — not in the CSV header, not in the README — and was inferrable only from player ages, which left the figures and archetype names undatable. It now lives in `config.SEASON` and is surfaced in the dashboard title, the sidebar, and both generated figures. (Confirmed against the data: Wembanyama age 20 / 71 games / 21.4 PPG, Embiid 39 games / 34.7 PPG.)
+
+The stats are committed to this repo so the pipeline runs end-to-end from a fresh clone with no manual data-fetch step.
 
 The file is semicolon-delimited (`;`) with `latin1` encoding and includes, per player-season row: identity/context columns (`Rk`, `Player`, `Pos`, `Age`, `Tm`, `G`, `GS`, `MP`), traditional counting stats (`PTS`, `TRB`, `AST`, `STL`, `BLK`, `ORB`, `DRB`, `TOV`, `PF`), and shooting stats with makes/attempts/percentages (`FG`/`FGA`/`FG%`, `3P`/`3PA`/`3P%`, `2P`/`2PA`/`2P%`, `eFG%`, `FT`/`FTA`/`FT%`). Players traded mid-season have a `Tm == 'TOT'` row aggregating their full-season totals, which `preprocess.py` uses in preference to the per-team split rows.
 

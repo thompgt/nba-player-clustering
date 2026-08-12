@@ -142,7 +142,7 @@ def MetricCard(label: str, value: str, caption: str = ""):
 
 @solara.component
 def Page():
-    solara.Title("NBA Player Clustering Dashboard")
+    solara.Title(f"NBA Player Archetypes — {config.SEASON}")
     solara.Style(CUSTOM_CSS)
 
     data = load_data()
@@ -157,6 +157,11 @@ def Page():
     archetype = str(player_row["Archetype"])
 
     with solara.Sidebar():
+        solara.Markdown(
+            f"**{config.SEASON} season** · per-game stats from "
+            f"[{config.SOURCE_NAME}]({config.SOURCE_URL})",
+            style={"font-size": "12px", "color": "#888"},
+        )
         solara.Markdown("## Player")
         solara.Select(
             label="Select Player",
@@ -319,4 +324,7 @@ def Page():
 
 @solara.component
 def Layout(children):
-    return solara.AppLayout(children=children, title="NBA Player Clustering")
+    return solara.AppLayout(
+        children=children,
+        title=f"NBA Player Archetypes · {config.SEASON}",
+    )

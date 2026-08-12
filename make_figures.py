@@ -95,8 +95,8 @@ def fig_pca_facets(df: pd.DataFrame) -> str:
     for ax in axes.ravel()[len(archetypes.ARCHETYPES):]:
         ax.set_visible(False)
     fig.suptitle(
-        "NBA player archetypes in PCA space — each panel highlights one K-Means cluster\n"
-        "grey points are all players, including the unranked",
+        f"NBA player archetypes in PCA space, {config.SEASON} — each panel highlights "
+        "one K-Means cluster\ngrey points are all players, including the unranked",
         x=0.01, ha="left", fontsize=12, color=INK,
     )
     fig.tight_layout()
@@ -192,7 +192,7 @@ def fig_cluster_profiles(df: pd.DataFrame) -> str:
     for spine in cbar.ax.spines.values():
         spine.set_visible(False)
     ax.set_title(
-        "Cluster statistical profiles — what separates each archetype",
+        f"Cluster statistical profiles, {config.SEASON} — what separates each archetype",
         loc="left", color=INK, pad=10,
     )
     fig.tight_layout()

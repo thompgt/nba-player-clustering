@@ -5,6 +5,18 @@ validate_model.py, app.py, and the test suite, so they can't drift out
 of sync (e.g. app.py's cluster labels vs. preprocess.py's cluster count).
 """
 
+# --- Provenance ------------------------------------------------------------
+# Which season the committed CSV covers. The file itself records this nowhere:
+# it was inferrable only by recognising player ages and rosters, which left the
+# figures, the archetype names and the README undatable. Confirmed against the
+# data (Wembanyama age 20 / 71 games / 21.4 PPG; Embiid 39 games / 34.7 PPG).
+SEASON: str = "2023-24"
+
+#: Basketball-Reference labels a season by its end year.
+SEASON_END_YEAR: int = 2024
+SOURCE_NAME: str = "Basketball-Reference"
+SOURCE_URL: str = f"https://www.basketball-reference.com/leagues/NBA_{SEASON_END_YEAR}_per_game.html"
+
 INPUT_FILE: str = "nba_stats.csv"
 OUTPUT_FILE: str = "processed_nba_stats.csv"
 
