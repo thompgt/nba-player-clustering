@@ -54,7 +54,7 @@ flowchart TD
 
     subgraph ops["Build & CI"]
         DOCKER["Dockerfile<br/><i>installs deps, runs preprocess.py<br/>at build time, serves on 8765</i>"]
-        CI["GitHub Actions — .github/workflows/ci.yml<br/><i>ruff → mypy → pytest</i>"]
+        CI["GitHub Actions — .github/workflows/ci.yml<br/><i>ruff → mypy (all modules) → pytest</i>"]
     end
 
     RAW --> PRE
@@ -112,7 +112,7 @@ The loader rejects a stale artifact rather than silently misusing it: wrong form
 | `model.joblib` | Generated artifact: the one fitted transform, loaded by the validator and the dashboard. |
 | `validate_model.py` | Quality gate on the generated artifact: required columns, silhouette, seed stability, minimum cluster size, and archetype-profile match. Exit code drives CI/pipeline. |
 | `run_pipeline.py` | Orchestrator — runs preprocess, validate, and tests in order, aborting on the first non-zero exit. |
-| `app.py` | Solara dashboard: sidebar player/compare selectors, KPI strip, Plotly PCA scatter, radar chart, similarity search, cluster explorer, filterable player table with CSV export. |
+| `app.py` | Solara dashboard: sidebar player/compare selectors, KPI strip, Plotly PCA scatter, radar chart, similarity search, archetype explorer, filterable player table with CSV export. Artifacts load through a cached `load_data()`, not at import time. |
 | `select_k.py` | Sweeps k over the same matrix the model is fit on, writes `model_selection.csv`, and warns when the shipped `N_CLUSTERS` is no longer defensible. |
 | `model_selection.csv` | Committed evidence for the chosen k: silhouette, inertia, smallest cluster, and seed stability per k. |
 | `make_figures.py` | Regenerates the analytical figures in `docs/images/` from the processed data and `model_selection.csv`. |
@@ -121,9 +121,10 @@ The loader rejects a stale artifact rather than silently misusing it: wrong form
 | `test_select_k.py` | Pytest suite over the k sweep and the defensibility checks it applies to `N_CLUSTERS`. |
 | `test_validate_model.py` | Pytest suite over the quality gates — feeds the validator broken clusterings and asserts each is rejected. |
 | `test_model_store.py` | Pytest suite over the persisted model — round-tripping, assignment reproduction, and staleness rejection. |
+| `test_app.py` | Smoke tests over the dashboard module — import, cached loading, similarity search, and positional player lookup. |
 | `conftest.py` | Session fixture that generates `processed_nba_stats.csv` if it's missing, so `pytest` works from a fresh clone. |
 | `Dockerfile` | Container build: install deps, run preprocessing at build time, serve on port 8765. |
-| `.github/workflows/ci.yml` | CI on push/PR to `main`: `ruff check` → `mypy` → `pytest`. |
+| `.github/workflows/ci.yml` | CI on push/PR to `main`: `ruff check` → `mypy .` (every module, `app.py` included) → `pytest`. |
 
 Regenerate the artifacts and figures after any model change so the numbers above stay true:
 
@@ -289,9 +290,9 @@ python run_pipeline.py
 ```
 
 ### Regenerate the README figures
-Requires `matplotlib` (not in `requirements.txt` — the app itself doesn't need it) and a current `model_selection.csv`:
+Requires `matplotlib` (in `requirements-dev.txt`, not `requirements.txt` — the app itself doesn't need it) and a current `model_selection.csv`:
 ```bash
-pip install matplotlib
+pip install -r requirements-dev.txt
 python select_k.py
 python make_figures.py
 ```
@@ -302,7 +303,7 @@ Install the dev dependencies and run the same checks CI runs:
 ```bash
 pip install -r requirements-dev.txt
 ruff check .
-mypy preprocess.py validate_model.py run_pipeline.py config.py archetypes.py select_k.py
+mypy .
 pytest -v
 ```
 

@@ -31,6 +31,18 @@ def validate() -> bool:
 
     logger.info("Columns validation passed.")
 
+    # The dashboard looks players up by name, so a duplicate would silently
+    # resolve to whichever row came first. TOT de-duplication is supposed to
+    # guarantee uniqueness; check that it did.
+    duplicates = df['Player'][df['Player'].duplicated()].unique()
+    if len(duplicates):
+        logger.error(
+            "%d player names appear more than once (%s%s). Lookups by name are ambiguous; "
+            "check the TOT de-duplication in preprocess.py.",
+            len(duplicates), ", ".join(duplicates[:5]), "..." if len(duplicates) > 5 else "",
+        )
+        return False
+
     # Score only the rows the model was actually fit on. Unranked players sit
     # outside every cluster; including them would score a partition nobody built.
     ranked = df[df['Cluster'] != archetypes.UNRANKED_CLUSTER]

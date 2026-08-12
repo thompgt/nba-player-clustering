@@ -189,7 +189,8 @@ def fig_cluster_profiles(df: pd.DataFrame) -> str:
 
     cbar = fig.colorbar(im, ax=ax, pad=0.02)
     cbar.set_label("Std. deviations from league average")
-    cbar.outline.set_visible(False)
+    for spine in cbar.ax.spines.values():
+        spine.set_visible(False)
     ax.set_title(
         "Cluster statistical profiles — what separates each archetype",
         loc="left", color=INK, pad=10,

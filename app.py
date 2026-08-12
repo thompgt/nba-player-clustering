@@ -1,4 +1,6 @@
+import functools
 import logging
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
@@ -12,22 +14,6 @@ import model_store
 
 logger = logging.getLogger(__name__)
 
-# Load data
-try:
-    df = pd.read_csv(config.OUTPUT_FILE)
-except FileNotFoundError:
-    logger.error(
-        "%s not found. Run `python preprocess.py` first to generate it (see README).",
-        config.OUTPUT_FILE,
-    )
-    raise
-
-if "Archetype" not in df.columns:
-    raise ValueError(
-        f"{config.OUTPUT_FILE} has no 'Archetype' column. Regenerate it with "
-        "`python preprocess.py` (archetype names are assigned during preprocessing)."
-    )
-
 RADAR_FEATURES = config.RADAR_FEATURES
 # Archetype order and color come from archetypes.py, so charts stay consistent
 # with each other and survive a refit that renumbers the cluster indices.
@@ -35,28 +21,90 @@ RADAR_FEATURES = config.RADAR_FEATURES
 ARCHETYPE_ORDER = [a.name for a in archetypes.ARCHETYPES] + [archetypes.UNRANKED]
 ARCHETYPE_COLOR_MAP = {a.name: a.color for a in archetypes.ARCHETYPES}
 ARCHETYPE_COLOR_MAP[archetypes.UNRANKED] = archetypes.UNRANKED_COLOR
-TEAMS = sorted(df["Tm"].unique().tolist())
-
-# Standardized feature matrix, reused to find statistically similar players.
-# Built with the *training* scaler loaded from disk rather than a fresh fit
-# over the processed CSV: similarity search must measure distance in the same
-# space the model was built in, and nothing else was enforcing that.
-_model = model_store.load()
-_feature_matrix = _model.transform(df)
 
 
-def find_similar_players(player_name: str, n: int = 5) -> pd.DataFrame:
-    idx = df.index[df["Player"] == player_name][0]
-    distances = np.linalg.norm(_feature_matrix - _feature_matrix[idx], axis=1)
+@dataclass(frozen=True)
+class Dashboard:
+    """The data the page renders, loaded once and reused."""
+
+    df: pd.DataFrame
+    model: model_store.FittedModel
+    #: Standardized feature matrix, used to find statistically similar players.
+    #: Built with the *training* scaler rather than a fresh fit, so similarity
+    #: is measured in the space the model was actually built in.
+    features: np.ndarray
+
+    @property
+    def teams(self) -> list[str]:
+        return sorted(self.df["Tm"].unique().tolist())
+
+    @property
+    def players(self) -> list[str]:
+        return self.df["Player"].tolist()
+
+
+@functools.cache
+def load_data() -> Dashboard:
+    """Read the pipeline artifacts. Cached, so the page renders don't re-read.
+
+    This deliberately does *not* run at import time. Module-level I/O made
+    ``app.py`` impossible to import without a generated CSV, which is why CI's
+    mypy step skipped the largest file in the repo and no test ever touched it.
+    """
+    try:
+        df = pd.read_csv(config.OUTPUT_FILE)
+    except FileNotFoundError:
+        logger.error(
+            "%s not found. Run `python preprocess.py` first to generate it (see README).",
+            config.OUTPUT_FILE,
+        )
+        raise
+
+    if "Archetype" not in df.columns:
+        raise ValueError(
+            f"{config.OUTPUT_FILE} has no 'Archetype' column. Regenerate it with "
+            "`python preprocess.py` (archetype names are assigned during preprocessing)."
+        )
+
+    model = model_store.load()
+    return Dashboard(df=df, model=model, features=model.transform(df))
+
+
+def player_position(frame: pd.DataFrame, player_name: str) -> int:
+    """Positional index of a player, for indexing the NumPy feature matrix.
+
+    ``frame.index[...]`` returns an index *label*, which only happens to equal
+    the positional offset while the frame carries a default RangeIndex. Mixing
+    that with ``.iloc`` and a positional NumPy array worked by coincidence and
+    would have broken silently the first time the frame was filtered or sorted.
+    ``flatnonzero`` is positional by construction.
+    """
+    positions = np.flatnonzero(frame["Player"].to_numpy() == player_name)
+    if len(positions) == 0:
+        raise KeyError(f"No player named {player_name!r} in the dataset.")
+    if len(positions) > 1:
+        # Two players sharing a name would otherwise resolve to whichever came
+        # first, with no indication that the other exists.
+        teams = ", ".join(frame.iloc[positions]["Tm"].astype(str))
+        raise KeyError(
+            f"{player_name!r} matches {len(positions)} rows ({teams}). "
+            "Player names must be unique; check the TOT de-duplication in preprocess.py."
+        )
+    return int(positions[0])
+
+
+def find_similar_players(data: Dashboard, player_name: str, n: int = 5) -> pd.DataFrame:
+    idx = player_position(data.df, player_name)
+    distances = np.linalg.norm(data.features - data.features[idx], axis=1)
     order = np.argsort(distances)
     order = order[order != idx][:n]
-    result = df.iloc[order][["Player", "Tm", "Archetype"]].copy()
+    result = data.df.iloc[order][["Player", "Tm", "Archetype"]].copy()
     result["Similarity"] = (100 / (1 + distances[order])).round(1)
     return result.reset_index(drop=True)
 
 
-def percentile_in_cluster(player_row: pd.Series, stat: str) -> float:
-    cluster_vals = df[df["Cluster"] == player_row["Cluster"]][stat]
+def percentile_in_cluster(data: Dashboard, player_row: pd.Series, stat: str) -> float:
+    cluster_vals = data.df[data.df["Cluster"] == player_row["Cluster"]][stat]
     return float((cluster_vals < player_row[stat]).mean() * 100)
 
 
@@ -97,6 +145,9 @@ def Page():
     solara.Title("NBA Player Clustering Dashboard")
     solara.Style(CUSTOM_CSS)
 
+    data = load_data()
+    df = data.df
+
     selected_player, set_selected_player = solara.use_state(df["Player"].iloc[0])
     compare_player, set_compare_player = solara.use_state("None")
     team_filter, set_team_filter = solara.use_state([])
@@ -134,7 +185,7 @@ def Page():
     with solara.Card():
         with solara.Row(justify="space-around"):
             for stat in ["PTS", "TRB", "AST", "STL", "BLK"]:
-                pct = percentile_in_cluster(player_row, stat)
+                pct = percentile_in_cluster(data, player_row, stat)
                 MetricCard(stat, f"{player_row[stat]:.1f}", f"{pct:.0f}th pct. in cluster")
 
     with solara.Columns([1, 1]):
@@ -218,7 +269,7 @@ def Page():
 
     with solara.Card("Similar Players"):
         solara.Markdown(f"Players most statistically similar to **{selected_player}**, by scaled per-game stats.")
-        solara.DataFrame(find_similar_players(selected_player))
+        solara.DataFrame(find_similar_players(data, selected_player))
 
     with solara.Card("Archetype Explorer"):
         blurbs = [(a.name, a.description) for a in archetypes.ARCHETYPES]
@@ -247,7 +298,7 @@ def Page():
             solara.SelectMultiple(
                 label="Filter by team",
                 values=team_filter,
-                all_values=TEAMS,
+                all_values=data.teams,
                 on_value=set_team_filter,
             )
 
