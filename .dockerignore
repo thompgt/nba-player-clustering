@@ -8,6 +8,10 @@ venv/
 .pytest_cache/
 .ipynb_checkpoints/
 processed_nba_stats.csv
+model.joblib
+.mypy_cache/
+.ruff_cache/
+docs/
 *.egg-info/
 dist/
 build/

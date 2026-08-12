@@ -53,7 +53,7 @@ flowchart TD
     end
 
     subgraph ops["Build & CI"]
-        DOCKER["Dockerfile<br/><i>installs deps, runs preprocess.py<br/>at build time, serves on 8765</i>"]
+        DOCKER["Dockerfile<br/><i>installs deps, builds + validates the model<br/>at build time, runs non-root on 8765</i>"]
         CI["GitHub Actions — .github/workflows/ci.yml<br/><i>ruff → mypy → preprocess → select_k --check →<br/>validate → pytest → make_figures</i>"]
     end
 
@@ -126,7 +126,7 @@ The loader rejects a stale artifact rather than silently misusing it: wrong form
 | `test_model_store.py` | Pytest suite over the persisted model — round-tripping, assignment reproduction, and staleness rejection. |
 | `test_app.py` | Smoke tests over the dashboard module — import, cached loading, similarity search, and positional player lookup. |
 | `conftest.py` | Session fixture that generates `processed_nba_stats.csv` if it's missing, so `pytest` works from a fresh clone. |
-| `Dockerfile` | Container build: install deps, run preprocessing at build time, serve on port 8765. |
+| `Dockerfile` | Container build: install deps, build **and validate** the model at build time, drop to a non-root user, serve on port 8765. |
 | `.github/workflows/ci.yml` | CI on push/PR to `main`: `ruff check` → `mypy .` (every module, `app.py` included) → build the model → `select_k.py --check` → `validate_model.py` → `pytest` → regenerate figures. |
 
 Regenerate the artifacts and figures after any model change so the numbers above stay true:
@@ -317,6 +317,8 @@ docker build -t nba-player-clustering .
 docker run -p 8765:8765 nba-player-clustering
 ```
 Then open http://localhost:8765.
+
+The build **gates the model it bakes in**: `preprocess.py`, `select_k.py --check` and `validate_model.py` run chained in a single layer, so a build cannot produce an image carrying a degenerate clustering. The container runs as the unprivileged `appuser` (uid 10001), not root.
 
 ## Data Source
 The project uses NBA player per-game stats sourced from [Basketball-Reference](https://www.basketball-reference.com/), committed to this repo as `nba_stats.csv` so the pipeline runs end-to-end from a fresh clone with no manual data-fetch step.
